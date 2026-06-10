@@ -2,9 +2,11 @@ import subprocess
 import sys
 import os
 import threading
+import time
+import requests
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# Servidor fantasma apenas para o Render não dar erro de Porta (Port Timeout)
+# Servidor fantasma para o Render não dar erro de Porta (Port Timeout)
 class RenderHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
@@ -13,22 +15,48 @@ class RenderHandler(BaseHTTPRequestHandler):
         self.wfile.write(b"Rastreador de Voos Ativo e Operando 24h!")
 
 def ligar_servidor_http():
-    # O Render injeta automaticamente a porta necessária na variável PORT
     porta = int(os.environ.get("PORT", 8080))
     server = HTTPServer(("0.0.0.0", porta), RenderHandler)
     print(f"🌍 Servidor de checagem do Render ativo na porta {porta}")
     server.serve_forever()
 
-if __name__ == "__main__":
-    print("🚀 Iniciando o ecossistema: Bot + Scraper...")
+def loop_auto_ping():
+    """Faz um ping na própria URL a cada 12 minutos para impedir o Render de dormir"""
+    # O Render gera essa variável automaticamente com o link do seu app (ex: https://seu-app.onrender.com)
+    url_publica = os.environ.get("RENDER_EXTERNAL_URL")
     
-    # Liga o servidor HTTP em uma linha paralela (Thread)
+    if not url_publica:
+        print("⚠️ RENDER_EXTERNAL_URL nao encontrada (ambiente local). Auto-ping desativado.")
+        return
+        
+    print(f"📶 Sistema de Auto-Ping inicializado para: {url_publica}")
+    
+    # Aguarda 3 minutos antes do primeiro ping para dar tempo do servidor ligar 100%
+    time.sleep(180)
+    
+    while True:
+        try:
+            response = requests.get(url_publica)
+            print(f"🔄 [Auto-Ping] Ping enviado com sucesso! Status do servidor: {response.status_code}")
+        except Exception as e:
+            print(f"⚠️ [Auto-Ping] Falha ao tentar pingar o servidor: {e}")
+        
+        # 720 segundos = 12 minutos (O Render só dorme se passar 15 minutos sem tráfego)
+        time.sleep(720)
+
+if __name__ == "__main__":
+    print("🚀 Iniciando o ecossistema com proteção anti-sono...")
+    
+    # 1. Liga o servidor HTTP que o Render exige
     threading.Thread(target=ligar_servidor_http, daemon=True).start()
     
-    # Dispara o bot e o scraper em paralelo
+    # 2. Liga o robô interno de Auto-Ping para manter o servidor ativo 24h
+    threading.Thread(target=loop_auto_ping, daemon=True).start()
+    
+    # 3. Dispara o bot e o scraper em paralelo
     processo_bot = subprocess.Popen([sys.executable, "bot.py"])
     processo_scraper = subprocess.Popen([sys.executable, "scraper.py"])
     
-    # Mantém o script principal vivo guardando os robôs
+    # Mantém o script principal vivo tomando conta de tudo
     processo_bot.wait()
     processo_scraper.wait()
