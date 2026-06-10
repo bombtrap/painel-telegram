@@ -28,7 +28,7 @@ def disparar_ligacao_twilio(telefone_usuario):
 def enviar_alerta_telegram(chat_id, mensagem):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
-        requests.post(url, json={"chat_id": chat_id, "text": mensagem, "parse_mode": "Markdown"})
+        requests.post(url, json={"chat_id": chat_id, "text": mensagem, "parse_mode": "Markdown", "disable_web_page_preview": False})
         print(f"🔔 [Telegram] Alerta enviado com sucesso para o chat {chat_id}!")
     except Exception as e:
         print(f"❌ Erro Telegram: {e}")
@@ -65,30 +65,23 @@ def pesquisar_passagens_skyscanner(origem, destino, data_partida):
             
             if total_encontrado > 0 and voos:
                 for item in voos:
-                    # 🎯 Estratégia de extração: Prioriza o price_raw descoberto no log!
                     preco_bruto = item.get("price_raw") or item.get("price")
                     
                     if preco_bruto is not None:
                         try:
-                            # Se ja for um numero puro (float/int), usa direto
                             if isinstance(preco_bruto, (int, float)):
                                 preco_real = float(preco_bruto)
                             else:
-                                # Se vier como string formatada (ex: 'R$ 2.554'), limpa os caracteres
                                 texto_limpo = str(preco_bruto).replace("R$", "").replace(" ", "")
-                                
-                                # Trata o padrao de pontuacao brasileiro
                                 if "," in texto_limpo:
                                     texto_limpo = texto_limpo.replace(".", "").replace(",", ".")
                                 elif "." in texto_limpo and len(texto_limpo.split(".")[-1]) == 3:
-                                    # Se tem ponto e termina com 3 digitos, e separador de milhar
                                     texto_limpo = texto_limpo.replace(".", "")
                                 
                                 preco_real = float(texto_limpo)
                                 
                             lista_voos.append({"preco": preco_real})
-                        except Exception as err:
-                            print(f"   ⚠️ Nao conseguiu converter a tarifa {preco_bruto}: {err}")
+                        except:
                             continue
                 return lista_voos
         else:
@@ -124,7 +117,6 @@ def executar_varredura():
             
         print(f"   📊 Processadas {len(voos)} tarifas reais com sucesso.")
         
-        # Ordena para garantir que vamos analisar a menor tarifa da lista primeiro
         voos.sort(key=lambda x: x["preco"])
         menor_preco = voos[0]["preco"]
         print(f"   - Menor tarifa real encontrada: R$ {menor_preco:.2f}")
@@ -132,13 +124,21 @@ def executar_varredura():
         if menor_preco <= teto_maximo:
             print(f"🎯 ALVO REAL ENCONTRADO! R$ {menor_preco:.2f} <= R$ {teto_maximo:.2f}")
             
+            # 🔥 GERADOR DE LINK DINÂMICO DO SKYSCANNER
+            # Converte '2026-06-10' para '260610' (Formato de URL do Skyscanner)
+            data_url = data_partida.replace("-", "")[2:]
+            destino_url = "gru" if destino == "SAO" else destino.lower()
+            
+            link_skyscanner = f"https://www.skyscanner.com.br/transporte/voos/{origem.lower()}/{destino_url}/{data_url}/?adults=1&cabinclass=economy&locale=pt-BR&market=BR&currency=BRL"
+            
             msg = (
                 f"🚨 *RADAR DISPARADO (OFERTA REAL)!*\n\n"
                 f"✈️ *Rota:* {origem} ➡️ {destino}\n"
                 f"📅 *Data do Voo:* {data_partida}\n"
                 f"💵 *Preço Encontrado:* R$ {menor_preco:.2f}\n"
                 f"🎯 *Seu Limite Máximo:* R$ {teto_maximo:.2f}\n\n"
-                f"🛒 _Acesse o buscador para garantir a vaga com preço de oportunidade!_"
+                f"🔗 *[🛒 CLIQUE AQUI PARA COMPRAR NO SKYSCANNER]({link_skyscanner})*\n\n"
+                f"⚡ _Aproveite a oportunidade antes que a tarifa mude!_"
             )
             enviar_alerta_telegram(chat_id, msg)
             
