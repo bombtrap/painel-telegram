@@ -1,14 +1,12 @@
-import os  # <-- Garanta que o os está importado aqui também
+import os
 import time
 import sqlite3
-import json
 import requests
 from datetime import datetime
 from twilio.rest import Client
 
 # ==================== CONFIGURAÇÕES VIA SISTEMA ====================
-AMADEUS_CLIENT_ID = os.getenv("AMADEUS_CLIENT_ID")
-AMADEUS_CLIENT_SECRET = os.getenv("AMADEUS_CLIENT_SECRET")
+TRAVELPAYOUTS_TOKEN = os.getenv("TRAVELPAYOUTS_TOKEN")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
 TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
@@ -16,206 +14,169 @@ TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_NUMERO = os.getenv("TWILIO_NUMERO")
 # =====================================================================
 
+# Lista de destinos para monitoramento automático (Cidades Isca)
 CIDADES_ISCA = ["CWB", "FLN", "POA", "IGU", "EZE", "MVD", "SCL", "NVT"]
-# =====================================================================
+DB_NAME = "radares.db"
 
-def obter_token_amadeus():
-    url = "https://test.api.amadeus.com/v1/security/oauth2/token"
-    data = {"grant_type": "client_credentials", "client_id": AMADEUS_CLIENT_ID, "client_secret": AMADEUS_CLIENT_SECRET}
+def disparar_ligacao_twilio():
+    """Faz a chamada telefônica via Twilio avisa sobre a passagem na madrugada"""
     try:
-        response = requests.post(url, data=data, timeout=15)
-        return response.json().get("access_token") if response.status_code == 200 else None
-    except Exception:
-        return None
-
-def consultar_api_amadeus(token, origem, destino, data):
-    url = "https://test.api.amadeus.com/v2/shopping/flight-offers"
-    headers = {"Authorization": f"Bearer {token}"}
-    params = {"originLocationCode": origem, "destinationLocationCode": destino, "departureDate": data, "adults": 1, "currencyCode": "BRL", "max": 15}
-    try:
-        response = requests.get(url, headers=headers, params=params, timeout=15)
-        return response.json().get("data", []) if response.status_code == 200 else []
-    except Exception:
-        return []
-
-def enviar_mensagem_telegram(chat_id, texto):
-    """Envia a mensagem direto para o chat PRIVADO do ID do usuário"""
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": chat_id, "text": texto, "parse_mode": "Markdown", "disable_web_page_preview": True}
-    try:
-        requests.post(url, json=payload, timeout=10)
-    except Exception as e:
-        print(f"❌ Erro ao notificar chat privado {chat_id}: {e}")
-
-def disparar_ligacao_twilio(numero_destino):
-    try:
-        if not numero_destino.startswith("+55"):
-            numero_limpo = "".join(filter(str.isdigit, numero_destino))
-            numero_destino = f"+55{numero_limpo}"
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        client.calls.create(
-            twiml='<Response><Say language="pt-BR" voice="alice">Atenção! Passagem promocional encontrada na madrugada! Verifique o seu Telegram imediatamente!</Say></Response>',
-            to=numero_destino, from_=TWILIO_NUMERO
+        
+        # O Twilio vai ligar para o número configurado no painel da nuvem
+        # Se preferir deixar um número fixo, mude para: to="+5511999999999"
+        destino_ligacao = os.getenv("TWILIO_NUMERO_DESTINO", TWILIO_NUMERO) 
+        
+        mensagem_twiml = (
+            '<Response>'
+            '<Say language="pt-BR" voice="alice">'
+            'Atenção! Passagem promocional encontrada na madrugada! Verifique o seu Telegram imediatamente!'
+            '</Say>'
+            '</Response>'
         )
-        print(f"📞 Ligação efetuada com sucesso para {numero_destino}!")
+        
+        call = client.calls.create(
+            twiml=mensagem_twiml,
+            to=destino_ligacao,
+            from_=TWILIO_NUMERO
+        )
+        print(f"📞 Ligação disparada com sucesso! SID: {call.sid}")
     except Exception as e:
-        print(f"❌ Erro ao disparar chamada Twilio: {e}")
+        print(f"❌ Erro ao disparar ligação Twilio: {e}")
 
-def validar_janela_horario(hora_voo_str, hora_min_str, hora_max_str):
+
+def enviar_alerta_telegram(chat_id, mensagem):
+    """Envia mensagem de texto formatada para o usuário no Telegram"""
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": chat_id,
+        "text": mensagem,
+        "parse_mode": "Markdown"
+    }
     try:
-        hora_voo = datetime.strptime(hora_voo_str.split("T")[1][:5], "%H:%M").time()
-        h_min = datetime.strptime(hora_min_str, "%H:%M").time()
-        h_max = datetime.strptime(hora_max_str, "%H:%M").time()
-        return h_min <= hora_voo <= h_max
-    except Exception:
-        return True
+        response = requests.post(url, json=payload)
+        if response.status_code != 200:
+            print(f"❌ Erro ao enviar Telegram: Status {response.status_code}")
+    except Exception as e:
+        print(f"❌ Falha de conexão ao enviar Telegram: {e}")
 
-def processar_voo(voo, radar, destino_alvo):
-    """Filtra e monta a mensagem privada baseada nas preferências do usuário"""
-    (user_id, origem, destino_principal, alternativo, max_paradas, 
-     skip_na_alternativa, data_partida, hora_min, hora_max, preco_alvo, 
-     margem, alerta_madrugada, telefone) = radar
+
+def pesquisar_passagens_travelpayouts(origem, destino):
+    """Consulta a API da Travelpayouts (Aviasales) em busca dos preços mais recentes em cache"""
+    url = "https://api.travelpayouts.com/v2/prices/latest"
     
-    preco = float(voo["price"]["grandTotal"])
-    teto_maximo = preco_alvo * (1 + (margem / 100))
+    headers = {
+        "X-Access-Token": TRAVELPAYOUTS_TOKEN
+    }
     
-    if preco > teto_maximo:
-        return None
-
-    itinerario = voo["itineraries"][0]
-    segments = itinerario["segments"]
-    total_paradas_reais = len(segments) - 1
+    params = {
+        "origin": origem,       # Corrigido para bater com o argumento da função
+        "destination": destino,
+        "currency": "BRL",
+        "period_type": "year",
+        "page": 1,
+        "limit": 5,
+        "show_to_affiliates": "true",
+        "sorting": "price"
+    }
     
-    horario_partida_reais = segments[0]["departure"]["at"]
-    if not validar_janela_horario(horario_partida_reais, hora_min, hora_max):
-        return None
+    try:
+        response = requests.get(url, headers=headers, params=params)
+        if response.status_code == 200:
+            dados = response.json()
+            if dados.get("success") and dados.get("data"):
+                return dados["data"]
+        else:
+            print(f"❌ Erro na Travelpayouts: Status {response.status_code}")
+    except Exception as e:
+        print(f"❌ Falha na requisição da passagem: {e}")
+    return []
 
-    skiplagging_detectado = False
-    aeroporto_desembarque_real = ""
-    destino_final_bilhete = segments[-1]["arrival"]["iataCode"]
 
-    if destino_final_bilhete == destino_alvo:
-        if total_paradas_reais > max_paradas:
-            return None
-        aeroporto_desembarque_real = destino_final_bilhete
-        tipo_estrategia = "✈️ Voo Direto / Conexão Tradicional"
-    else:
-        for segment in segments[:-1]:
-            if segment["arrival"]["iataCode"] == destino_alvo:
-                skiplagging_detectado = True
-                aeroporto_desembarque_real = destino_alvo
-                break
-        if not skiplagging_detectado:
-            return None
-        tipo_estrategia = "🚨 OPORTUNIDADE SKIPLAGGING (Desembarque Oculto)"
-
-    tag_preco = "🔥 PECHINCHA TOTAL (Abaixo do Teto)" if preco <= preco_alvo else "⚠️ DENTRO DA MARGEM DE TOLERÂNCIA"
-    lista_rota = [seg["departure"]["iataCode"] for seg in segments] + [destino_final_bilhete]
-    rota_visual = " ➡️ ".join(lista_rota)
+def executar_varredura():
+    """Varre o banco de dados de radares e procura ofertas de passagens"""
+    print(f"🔄 [{datetime.now().strftime('%H:%M:%S')}] Iniciando varredura de preços...")
     
-    link_compra = f"https://www.google.com/travel/flights?q=Flights%20to%20{destino_final_bilhete}%20from%20{origem}%20on%20{data_partida}%20one%20way"
-
-    logistica = f"📍 Você descerá em: *{aeroporto_desembarque_real}*"
-    if aeroporto_desembarque_real in ["GIG", "SDU"]:
-        logistica += "\n🚌 *Nota Logística:* Desembarque no RJ + pegue o ônibus para SP (8h de viagem)."
-
-    mensagem = (
-        f"{tag_preco}\n"
-        f"*{tipo_estrategia}*\n\n"
-        f"🗺️ *Rota Completa do Bilhete:* `{rota_visual}`\n"
-        f"💵 *Preço Total:* R$ {preco:.2f}\n"
-        f"📅 *Partida:* {horario_partida_reais.split('T')[0]} às {horario_partida_reais.split('T')[1][:5]}\n\n"
-        f"{logistica}\n\n"
-        f"🔗 [Clique aqui para abrir no Google Flights e Comprar]({link_compra})\n\n"
-        f"⚠️ _Se for Skiplagging, viaje APENAS com mala de mão e abandone os trechos finais!_"
-    )
-    
-    return {"mensagem": message, "preco": preco, "alerta_madrugada": alerta_madrugada, "telefone": telefone, "user_id": user_id}
-
-def executar_scraps_ativos():
-    print(f"[{datetime.now()}] 🔄 Lendo radares ativos no banco de dados...")
-    token = obter_token_amadeus()
-    if not token: return
-
-    conn = sqlite3.connect("radares.db")
+    conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
-    try:
-        cursor.execute("SELECT user_id, origem, destino, alternativo, max_paradas, skip_alternativa, data_partida, hora_min, hora_max, preco_alvo, margem, alerta_madrugada, telefone FROM radares")
-        radares = cursor.fetchall()
-    except sqlite3.OperationalError:
-        conn.close()
-        return
-    conn.close()
-
-    for radar in radares:
-        # Unpacking explícito e seguro por nome de variável
-        (user_id, origem, destino_principal, destino_alternativo, max_paradas, 
-         skip_na_alternativa, data_voo, hora_min, hora_max, preco_alvo, 
-         margem, alerta_madrugada, telefone) = radar
-
-        alertas_disparados = []
-
-        # --- BUSCA ROTA PRINCIPAL ---
-        voos_diretos = consultar_api_amadeus(token, origem, destino_principal, data_voo)
-        for v in voos_diretos:
-            res = processar_voo(v, radar, destino_principal)
-            if res: alertas_disparados.append(res)
-
-        for isca in CIDADES_ISCA:
-            if isca == destino_principal: continue
-            voos_iscas = consultar_api_amadeus(token, origem, isca, data_voo)
-            for v in voos_iscas:
-                res = processar_voo(v, radar, destino_principal)
-                if res: alertas_disparados.append(res)
-
-        # --- BUSCA ROTA ALTERNATIVA ---
-        if destino_alternativo:
-            voos_alt = consultar_api_amadeus(token, origem, destino_alternativo, data_voo)
-            for v in voos_alt:
-                res = processar_voo(v, radar, destino_alternativo)
-                if res: alertas_disparados.append(res)
+    
+    # Garante a existência da tabela caso o bot ainda não tenha rodado
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS radares (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            chat_id TEXT,
+            origem TEXT,
+            destino TEXT,
+            preco_maximo REAL
+        )
+    ''')
+    conn.commit()
+    
+    # 1. Checa os radares personalizados que os usuários cadastraram
+    cursor.execute("SELECT chat_id, origem, destino, preco_maximo FROM radares")
+    radares_usuarios = cursor.fetchall()
+    
+    for chat_id, origem, destino, preco_maximo in radares_usuarios:
+        voos = pesquisar_passagens_travelpayouts(origem, destino)
+        
+        for voo in voos:
+            preco_real = voo.get("value")
+            if preco_real and preco_real <= preco_maximo:
+                msg = (
+                    f"🚨 *ALERTA DE PASSAGEM BARATA!*\n\n"
+                    f"✈️ *Rota:* {origem} ➡️ {destino}\n"
+                    f"💵 *Preço encontrado:* R$ {preco_real:.2f}\n"
+                    f"🎯 *Seu limite:* R$ {preco_maximo:.2f}\n"
+                    f"📅 *Data de Ida:* {voo.get('depart_date')}\n\n"
+                    f"🔗 _Corra para o painel para emitir antes que mude!_"
+                )
+                enviar_alerta_telegram(chat_id, msg)
                 
-            if skip_na_alternativa == "sim":
-                for isca in CIDADES_ISCA:
-                    if isca == destino_alternativo: continue
-                    voos_iscas_alt = consultar_api_amadeus(token, origem, isca, data_voo)
-                    for v in voos_iscas_alt:
-                        res = processar_voo(v, radar, destino_alternativo)
-                        if res: alertas_disparados.append(res)
+                # Se encontrar a oferta na calada da noite (00h às 06h), liga para acordar!
+                hora_atual = datetime.now().hour
+                if 0 <= hora_atual <= 6:
+                    disparar_ligacao_twilio()
+                break
+        time.sleep(1.5)  # Delay leve para respeitar os limites da API
+        
+    # 2. Checa as Cidades Isca (Varredura geral partindo de SP como Hub padrão)
+    origem_hub = "SAO"
+    for destino_isca in CIDADES_ISCA:
+        voos_isca = pesquisar_passagens_travelpayouts(origem_hub, destino_isca)
+        for voo in voos_isca:
+            preco_isca = voo.get("value")
+            
+            # Se uma cidade isca estiver com preço absurdamente baixo (Ex: Menor que R$ 450)
+            if preco_isca and preco_isca < 450:
+                # Dispara o alerta geral para você (coloque seu Chat ID real do Telegram no painel do Render)
+                meu_chat_id = os.getenv("TELEGRAM_CHAT_ID_ADMIN")
+                if meu_chat_id:
+                    msg_isca = (
+                        f"🔥 *PROMOÇÃO ISCA DETECTADA!*\n\n"
+                        f"✈️ *Rota:* {origem_hub} ➡️ {destino_isca}\n"
+                        f"💵 *Preço bizarro:* R$ {preco_isca:.2f}\n"
+                        f"📅 *Data:* {voo.get('depart_date')}"
+                    )
+                    enviar_alerta_telegram(meu_chat_id, msg_isca)
+                    
+                    hora_atual = datetime.now().hour
+                    if 0 <= hora_atual <= 6:
+                        disparar_ligacao_twilio()
+                break
+        time.sleep(1.5)
 
-        # --- DISPARO PRIVADO DOS ALERTAS ---
-        if alertas_disparados:
-            alertas_disparados.sort(key=lambda x: x["preco"])
-            melhor_oferta = alertas_disparados[0]
-            
-            # Envia a mensagem EXCLUSIVAMENTE para o chat privado do user_id dono desse radar
-            enviar_mensagem_telegram(melhor_oferta["user_id"], melhor_oferta["mensagem"])
-            
-            # Disparador do telefone na madrugada (Corrigido para hora_atual)
-            hora_atual = datetime.now().hour
-            if 1 <= hora_atual <= 5:
-                if melhor_oferta["alerta_madrugada"] == "ligacao" and melhor_oferta["telefone"]:
-                    disparar_ligacao_twilio(melhor_oferta["telefone"])
+    conn.close()
+    print("💤 Varredura concluída. Aguardando próximo ciclo...")
+
 
 if __name__ == "__main__":
-    print("🚀 Scraper ativo e calibrado para as 03:00 e 14:00...")
-    ja_rodou_madrugada = False
-    ja_rodou_tarde = False
-
+    print("🕵️‍♂️ Motor do Scraper Travelpayouts Inicializado com Sucesso!")
+    
+    # Roda em loop contínuo a cada 30 minutos
     while True:
-        hora_atual = datetime.now().hour
-        if hora_atual == 3:
-            if not ja_rodou_madrugada:
-                executar_scraps_ativos()
-                ja_rodou_madrugada = True
-                ja_rodou_tarde = False
-        elif hora_atual == 14:
-            if not ja_rodou_tarde:
-                executar_scraps_ativos()
-                ja_rodou_tarde = True
-                ja_rodou_madrugada = False
-        else:
-            ja_rodou_madrugada = False
-            ja_rodou_tarde = False
-
-        time.sleep(60)
+        try:
+            executar_varredura()
+        except Exception as e:
+            print(f"❌ Erro crítico no loop do scraper: {e}")
+        
+        time.sleep(1800)  # 1800 segundos = 30 minutos
