@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Painel do Rastreador</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #222222);
+            margin: 0; padding: 15px;
+        }
+        .section { margin-bottom: 20px; padding: 10px; border-bottom: 1px solid rgba(0,0,0,0.1); }
+        label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 14px; }
+        .aviso-urgente {
+            background-color: rgba(255, 59, 48, 0.1);
+            color: #ff3b30;
+            padding: 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            margin-bottom: 15px;
+            border: 1px solid rgba(255, 59, 48, 0.2);
+        }
+        
+        .autocomplete-container { position: relative; width: 100%; }
+        
+        input, select {
+            width: 100%; padding: 10px; margin-bottom: 12px;
+            border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box;
+            background-color: var(--tg-theme-secondary-bg-color, #fafafa);
+            color: var(--tg-theme-text-color, #222222);
+        }
+        
+        .suggestions-list {
+            position: absolute; top: 42px; left: 0; width: 100%;
+            background-color: var(--tg-theme-bg-color, #ffffff);
+            border: 1px solid #ccc; border-radius: 8px;
+            max-height: 200px; overflow-y: auto; z-index: 999;
+            box-shadow: 0px 4px 10px rgba(0,0,0,0.15); display: none;
+        }
+        .suggestion-item {
+            padding: 10px; cursor: pointer; font-size: 14px;
+            border-bottom: 1px solid rgba(0,0,0,0.05);
+        }
+        .suggestion-item:hover { background-color: rgba(36, 129, 204, 0.1); }
+
+        .inline-group { display: flex; gap: 10px; }
+        .inline-group div { flex: 1; }
+        
+        .financeiro-group { display: flex; gap: 15px; }
+        .financeiro-group .preco-box { flex: 2; }
+        .financeiro-group .margem-box { flex: 1; }
+
+        button {
+            width: 100%; padding: 12px; background-color: var(--tg-theme-button-color, #2481cc);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <form id="painelForm">
+        <div class="section">
+            <label>Origem (Onde você está?):</label>
+            <div class="autocomplete-container">
+                <input type="text" id="origemInput" placeholder="Digite a cidade de partida... Ex: Manaus" autocomplete="off" required>
+                <div id="origemSuggestions" class="suggestions-list"></div>
+            </div>
+
+            <label>Destino Principal (Para onde quer ir?):</label>
+            <div class="autocomplete-container">
+                <input type="text" id="destinoInput" placeholder="Digite o destino... Ex: São Paulo" autocomplete="off" required>
+                <div id="destinoSuggestions" class="suggestions-list"></div>
+            </div>
+
+            <label>Destino Alternativo (Opcional):</label>
+            <div class="autocomplete-container">
+                <input type="text" id="alternativoInput" placeholder="Ex: Rio de Janeiro" autocomplete="off">
+                <div id="alternativoSuggestions" class="suggestions-list"></div>
+            </div>
+
+            <div class="inline-group">
+                <div>
+                    <label>Paradas Máximas:</label>
+                    <input type="number" id="maxParadas" value="2" min="0">
+                </div>
+                <div>
+                    <label>Skiplagging na Alternativa?</label>
+                    <select id="skipAlternativa">
+                        <option value="sim">Sim</option>
+                        <option value="nao">Não</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <label>Data de Partida:</label>
+            <input type="date" id="dataPartida" required>
+
+            <div class="inline-group">
+                <div>
+                    <label>Hora Mínima:</label>
+                    <input type="time" id="horaMin" value="00:00">
+                </div>
+                <div>
+                    <label>Hora Máxima:</label>
+                    <input type="time" id="horaMax" value="23:59">
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="financeiro-group">
+                <div class="preco-box">
+                    <label>Preço Alvo (R$):</label>
+                    <input type="number" id="precoAlvo" value="700" required>
+                </div>
+                <div class="margem-box">
+                    <label>Margem (%):</label>
+                    <input type="number" id="margem" value="30" required>
+                </div>
+            </div>
+        </div>
+
+        <div class="section">
+            <div class="aviso-urgente">
+                🚨 <b>AVISO CRÍTICO:</b> Ofertas encontradas na madrugada expiram em minutos. Compre IMEDIATAMENTE!
+            </div>
+            
+            <label>Como deseja ser despertado na madrugada?</label>
+            <select id="tipoAlertaMadrugada" onchange="controlarCampoTelefone()">
+                <option value="telegram">💬 Apenas mensagem de texto no Telegram</option>
+                <option value="ligacao">📞 Ligação Telefônica Real (Robô te liga)</option>
+                <option value="pushover">📢 Alerta de Sirene via aplicativo Pushover (Fura o bloqueio 'Não Perturbe' do celular)</option>
+            </select>
+
+            <div id="blocoTelefone" style="display: none;">
+                <label>Celular com DDD (Somente números):</label>
+                <input type="tel" id="telefoneUsuario" placeholder="Ex: 92996097593">
+            </div>
+        </div>
+
+        <button type="submit">Salvar Configurações do Radar</button>
+    </form>
+
+    <script>
+        const tg = window.Telegram.WebApp;
+        tg.expand();
+
+        const BANCO_AEROPORTOS = [
+            { nome: "São Paulo - TODOS OS AEROPORTOS (SAO)", iata: "SAO" },
+            { nome: "São Paulo - Guarulhos (GRU)", iata: "GRU" },
+            { nome: "São Paulo - Congonhas (CGH)", iata: "CGH" },
+            { nome: "São Paulo - Campinas (VCP)", iata: "VCP" },
+            { nome: "Rio de Janeiro - TODOS OS AEROPORTOS (RIO)", iata: "RIO" },
+            { nome: "Rio de Janeiro - Galeão (GIG)", iata: "GIG" },
+            { nome: "Rio de Janeiro - Santos Dumont (SDU)", iata: "SDU" },
+            { nome: "Manaus - Eduardo Gomes (MAO)", iata: "MAO" },
+            { nome: "Brasília - Presidente Juscelino Kubitschek (BSB)", iata: "BSB" },
+            { nome: "Belo Horizonte - Confins (CNF)", iata: "CNF" },
+            { nome: "Belo Horizonte - Pampulha (PLU)", iata: "PLU" },
+            { nome: "Salvador - Dep. Luís Eduardo Magalhães (SSA)", iata: "SSA" },
+            { nome: "Recife - Guararapes (REC)", iata: "REC" },
+            { nome: "Fortaleza - Pinto Martins (FOR)", iata: "FOR" },
+            { nome: "Curitiba - Afonso Pena (CWB)", iata: "CWB" },
+            { nome: "Porto Alegre - Salgado Filho (POA)", iata: "POA" },
+            { nome: "Florianópolis - Hercílio Luz (FLN)", iata: "FLN" },
+            { nome: "Belém - Val-de-Cans (BEL)", iata: "BEL" },
+            { nome: "Goiânia - Santa Genoveva (GYN)", iata: "GYN" },
+            { nome: "Cuiabá - Marechal Rondon (CGB)", iata: "CGB" },
+            { nome: "Vitória - Eurico de Aguiar Salles (VIX)", iata: "VIX" },
+            { nome: "Natal - Aluízio Alves (NAT)", iata: "NAT" },
+            { nome: "Maceió - Zumbi dos Palmares (MCZ)", iata: "MCZ" },
+            { nome: "João Pessoa - Castro Pinto (JPA)", iata: "JPA" },
+            { nome: "Aracaju - Santa Maria (AJU)", iata: "AJU" },
+            { nome: "São Luís - Marechal Cunha Machado (SLZ)", iata: "SLZ" },
+            { nome: "Teresina - Senador Petrônio Portella (THE)", iata: "THE" },
+            { nome: "Campo Grande (CGR)", iata: "CGR" },
+            { nome: "Porto Velho - Governador Jorge Teixeira (PVH)", iata: "PVH" },
+            { nome: "Macapá - Alberto Alcolumbre (MCP)", iata: "MCP" },
+            { nome: "Rio Branco - Plácido de Castro (RBR)", iata: "RBR" },
+            { nome: "Boa Vista - Atlas Brasil Cantanhede (BVB)", iata: "BVB" },
+            { nome: "Palmas - Brigadeiro Lysias Rodrigues (PMW)", iata: "PMW" },
+            { nome: "Navegantes - Ministro Victor Konder (NVT)", iata: "NVT" },
+            { nome: "Foz do Iguaçu - Cataratas (IGU)", iata: "IGU" }
+        ];
+
+        const codigosSelecionados = { origem: "", destino: "", alternativo: "" };
+
+        function vincularAutocomplete(inputId, suggestionsId, chaveDicionario) {
+            const input = document.getElementById(inputId);
+            const box = document.getElementById(suggestionsId);
+
+            input.addEventListener("input", function() {
+                const termo = this.value.toLowerCase().trim();
+                box.innerHTML = "";
+                
+                if (!termo) {
+                    box.style.display = "none";
+                    codigosSelecionados[chaveDicionario] = "";
+                    return;
+                }
+
+                const filtrados = BANCO_AEROPORTOS.filter(a => 
+                    a.nome.toLowerCase().includes(termo) || a.iata.toLowerCase().includes(termo)
+                );
+
+                if (filtrados.length > 0) {
+                    box.style.display = "block";
+                    filtrados.forEach(item => {
+                        const div = document.createElement("div");
+                        div.className = "suggestion-item";
+                        div.innerText = item.nome;
+                        
+                        div.addEventListener("click", function() {
+                            input.value = item.nome;
+                            codigosSelecionados[chaveDicionario] = item.iata;
+                            box.style.display = "none";
+                        });
+                        box.appendChild(div);
+                    });
+                } else {
+                    box.style.display = "none";
+                }
+            });
+
+            document.addEventListener("click", function(e) {
+                if (e.target !== input) box.style.display = "none";
+            });
+        }
+
+        vincularAutocomplete("origemInput", "origemSuggestions", "origem");
+        vincularAutocomplete("destinoInput", "destinoSuggestions", "destino");
+        vincularAutocomplete("alternativoInput", "alternativoSuggestions", "alternativo");
+
+        function controlarCampoTelefone() {
+            const escolha = document.getElementById('tipoAlertaMadrugada').value;
+            const bloco = document.getElementById('blocoTelefone');
+            const inputTelefone = document.getElementById('telefoneUsuario');
+            
+            if (escolha === 'ligacao') {
+                bloco.style.display = 'block';
+                inputTelefone.required = true;
+            } else {
+                bloco.style.display = 'none';
+                inputTelefone.required = false;
+            }
+        }
+
+        document.getElementById('painelForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            if (!codigosSelecionados.origem && document.getElementById("origemInput").value.length === 3) {
+                codigosSelecionados.origem = document.getElementById("origemInput").value.toUpperCase();
+            }
+            if (!codigosSelecionados.destino && document.getElementById("destinoInput").value.length === 3) {
+                codigosSelecionados.destino = document.getElementById("destinoInput").value.toUpperCase();
+            }
+
+            if (!codigosSelecionados.origem || !codigosSelecionados.destino) {
+                alert("Por favor, selecione uma cidade válida na lista de sugestões!");
+                return;
+            }
+
+            const dadosConfig = {
+                origem: codigosSelecionados.origem,
+                destino: codigosSelecionados.destino,
+                alternativo: codigosSelecionados.alternativo,
+                maxParadas: parseInt(document.getElementById('maxParadas').value),
+                skipAlternativa: document.getElementById('skipAlternativa').value,
+                dataPartida: document.getElementById('dataPartida').value,
+                horaMin: document.getElementById('horaMin').value,
+                horaMax: document.getElementById('horaMax').value,
+                precoAlvo: parseFloat(document.getElementById('precoAlvo').value),
+                margem: parseInt(document.getElementById('margem').value),
+                alertaMadrugada: document.getElementById('tipoAlertaMadrugada').value,
+                telefone: document.getElementById('telefoneUsuario').value
+            };
+
+            tg.sendData(JSON.stringify(dadosConfig));
+            tg.close();
+        });
+    </script>
+</body>
+</html>
