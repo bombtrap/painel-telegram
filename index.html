@@ -152,7 +152,6 @@
         const tg = window.Telegram.WebApp;
         tg.expand();
 
-        // Resgata o ID do usuário de forma segura dentro do Telegram
         const chat_id = tg.initDataUnsafe?.user?.id || "TESTE_LOCAL";
 
         const BANCO_AEROPORTOS = [
@@ -270,30 +269,36 @@
                 return;
             }
 
-            // Mapeando exatamente os dados para o formato que a nossa API no Render precisa receber
+            // AGORA SIM: Enviando a ficha completa de configuracoes do radar
             const dadosConfig = {
                 chat_id: chat_id,
                 origem: codigosSelecionados.origem,
                 destino: codigosSelecionados.destino,
-                preco_maximo: parseFloat(document.getElementById('precoAlvo').value)
+                alternativo: codigosSelecionados.alternativo || "",
+                maxParadas: parseInt(document.getElementById('maxParadas').value) || 0,
+                skipAlternativa: document.getElementById('skipAlternativa').value,
+                dataPartida: document.getElementById('dataPartida').value,
+                horaMin: document.getElementById('horaMin').value,
+                horaMax: document.getElementById('horaMax').value,
+                precoAlvo: parseFloat(document.getElementById('precoAlvo').value),
+                margem: parseInt(document.getElementById('margem').value) || 0,
+                alertaMadrugada: document.getElementById('tipoAlertaMadrugada').value,
+                telefone: document.getElementById('telefoneUsuario').value || ""
             };
 
             const btn = document.getElementById("btnSubmeter");
             btn.innerText = "⏳ Enviando para o Bot...";
             btn.disabled = true;
 
-            // Envia os dados estruturados direto para a API do seu Render
             fetch("https://rastreador-passagens.onrender.com", {
                 method: "POST",
-                headers: {
-                    "Content-Type": "application/json"
-                },
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(dadosConfig)
             })
             .then(response => {
                 if (response.ok) {
                     alert("✅ Radar configurado com sucesso e salvo no banco de dados!");
-                    tg.close(); // Só fecha se salvou mesmo no SQLite
+                    tg.close();
                 } else {
                     alert("❌ O Render recusou os dados. Verifique os logs.");
                     liberarBotao();
