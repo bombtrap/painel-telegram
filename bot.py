@@ -31,24 +31,64 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     )
 
 
+async def listar_radares(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Comando secreto para listar todos os radares salvos no banco de dados SQLite"""
+    print("🔍 Comando /listar acionado por um usuário.")
+    
+    try:
+        conn = sqlite3.connect(DB_NAME)
+        cursor = conn.cursor()
+        
+        # Garante que a tabela existe antes de ler
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS radares (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                chat_id TEXT,
+                origem TEXT,
+                destino TEXT,
+                preco_maximo REAL
+            )
+        ''')
+        
+        cursor.execute("SELECT id, chat_id, origem, destino, preco_maximo FROM radares")
+        linhas = cursor.fetchall()
+        conn.close()
+        
+        if not linhas:
+            await update.message.reply_text("📭 O banco de dados está vazio. Nenhum radar cadastrado ainda!")
+            return
+            
+        # Monta a mensagem listando o que achou no DB
+        mensagem = "🗄️ *RADARES CADASTRADOS NO BANCO:*\n\n"
+        for id_radar, chat_id, origem, destino, preco_maximo in linhas:
+            mensagem += (
+                f"🆔 *ID:* {id_radar}\n"
+                f"👤 *User Chat ID:* `{chat_id}`\n"
+                f"✈️ *Rota:* {origem} ➡️ {destino}\n"
+                f"💵 *Teto:* R$ {preco_maximo:.2f}\n"
+                f"-------------------------\n"
+            )
+            
+        await update.message.reply_text(mensagem, parse_mode="Markdown")
+        
+    except Exception as e:
+        print(f"❌ Erro ao ler o banco de dados: {e}")
+        await update.message.reply_text("❌ Erro interno ao tentar acessar o banco de dados.")
+
+
 def main():
     print("🤖 Inicializando o processo do Bot...")
     
-    # 🔥 CORREÇÃO DEFINITIVA PARA PYTHON 3.12+ / 3.14 NO RENDER:
-    # Criamos e definimos o loop na linha principal antes do Telegram iniciar.
-    # Isso impede o "RuntimeError: There is no current event loop".
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     
-    # Cria a aplicação oficial do Telegram
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     
-    # Registra o comando /start
+    # Registro dos comandos do bot
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("listar", listar_radares)) # <-- Novo comando cadastrado aqui!
     
     print("🟩 Bot pronto e aguardando conexões!")
-    
-    # O run_polling nativo gerencia quedas de rede e CancelledError automaticamente
     app.run_polling()
 
 
