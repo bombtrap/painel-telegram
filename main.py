@@ -1,53 +1,28 @@
-import subprocess
-import sys
-import os
-import threading
-import time
-import json
-import psycopg2 # Mudamos para psycopg2
-import requests
-from http.server import BaseHTTPRequestHandler, HTTPServer
-
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-class RenderHandler(BaseHTTPRequestHandler):
-    def _set_cors_headers(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
-        self.send_header("Access-Control-Allow-Headers", "Content-Type")
-
-    def do_OPTIONS(self):
-        self.send_response(200)
-        self._set_cors_headers()
-        self.end_headers()
-
-    def do_GET(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self._set_cors_headers()
-        self.end_headers()
-        self.wfile.write(b"Rastreador de Voos Ativo e Operando 24h!")
-        
-    def do_HEAD(self):
-        self.send_response(200)
-        self.send_header("Content-type", "text/html")
-        self._set_cors_headers()
-        self.end_headers()
-
-    def do_POST(self):
+def do_POST(self):
         content_length = int(self.headers['Content-Length'])
         post_data = self.rfile.read(content_length)
         
         try:
+            # Buscando a variável direto aqui dentro para garantir que pegou o valor fresco
+            db_url = os.getenv("DATABASE_URL")
+            
+            if not db_url:
+                print("🚨 [ERRO CRÍTICO] A variável DATABASE_URL está completamente VAZIA no Render!")
+                self.send_response(500)
+                self._set_cors_headers()
+                self.end_headers()
+                self.wfile.write(b"Erro: DATABASE_URL nao configurada no Render.")
+                return
+
             dados = json.loads(post_data.decode('utf-8'))
             chat_id = dados.get("chat_id")
             origem = dados.get("origem")
             destino = dados.get("destino")
             preco_maximo = dados.get("preco_maximo")
             
-            if chat_id and origem and destino and preco_maximo:
-                # Conecta no PostgreSQL do Neon
-                conn = psycopg2.connect(DATABASE_URL)
+            if chat_id and起源 and destino and preco_maximo:
+                # Usa a variável db_url que validamos acima
+                conn = psycopg2.connect(db_url)
                 cursor = conn.cursor()
                 cursor.execute('''
                     CREATE TABLE IF NOT EXISTS radares (
@@ -58,7 +33,6 @@ class RenderHandler(BaseHTTPRequestHandler):
                         preco_maximo DOUBLE PRECISION
                     )
                 ''')
-                # No Postgres usamos %s no lugar de ?
                 cursor.execute(
                     "INSERT INTO radares (chat_id, origem, destino, preco_maximo) VALUES (%s, %s, %s, %s)",
                     (str(chat_id), str(origem).upper(), str(destino).upper(), float(preco_maximo))
@@ -87,34 +61,3 @@ class RenderHandler(BaseHTTPRequestHandler):
             self._set_cors_headers()
             self.end_headers()
             self.wfile.write(str(e).encode('utf-8'))
-
-
-def ligar_servidor_http():
-    porta = int(os.environ.get("PORT", 8080))
-    server = HTTPServer(("0.0.0.0", porta), RenderHandler)
-    print(f"🌍 Servidor API do Render ativo na porta {porta}")
-    server.serve_forever()
-
-def loop_auto_ping():
-    url_publica = os.environ.get("RENDER_EXTERNAL_URL")
-    if not url_publica:
-        return
-    time.sleep(180)
-    while True:
-        try:
-            requests.get(url_publica)
-        except:
-            pass
-        time.sleep(720)
-
-if __name__ == "__main__":
-    print("🚀 Iniciando o ecossistema com API PostgreSQL externa...")
-    
-    threading.Thread(target=ligar_servidor_http, daemon=True).start()
-    threading.Thread(target=loop_auto_ping, daemon=True).start()
-    
-    processo_bot = subprocess.Popen([sys.executable, "-u", "bot.py"])
-    processo_scraper = subprocess.Popen([sys.executable, "-u", "scraper.py"])
-    
-    processo_bot.wait()
-    processo_scraper.wait()
