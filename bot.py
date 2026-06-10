@@ -1,13 +1,13 @@
 import json
+import os  # <-- Adicionamos essa linha para o Python conseguir ler o sistema
 import sqlite3
 from telegram import Update, ReplyKeyboardMarkup, KeyboardButton, WebAppInfo
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes
 
-# ==================== CONFIGURAÇÕES ====================
-# Lembre-se de colar aqui o Token que o @BotFather te deu!
-TELEGRAM_TOKEN = "TOKEN AQUI"
+# ==================== CONFIGURAÇÕES VIA SISTEMA ====================
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 URL_DO_FORMULARIO = "https://bombtrap.github.io/painel-telegram/"
-# =======================================================
+# ===================================================================
 
 # ================= BANCO DE DADOS ALINHADO =================
 def iniciar_banco():

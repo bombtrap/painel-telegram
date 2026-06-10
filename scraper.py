@@ -1,4 +1,4 @@
-import os
+import os  # <-- Garanta que o os está importado aqui também
 import time
 import sqlite3
 import json
@@ -6,16 +6,15 @@ import requests
 from datetime import datetime
 from twilio.rest import Client
 
-# ==================== CONFIGURAÇÕES DE CREDENCIAIS ====================
-# Deixe como texto genérico para o GitHub aceitar o upload
-AMADEUS_CLIENT_ID = "SEU_AMADEUS_CLIENT_ID_AQUI"
-AMADEUS_CLIENT_SECRET = "SEU_AMADEUS_CLIENT_SECRET_AQUI"
-TELEGRAM_TOKEN = "SEU_TOKEN_DO_TELEGRAM_AQUI"
+# ==================== CONFIGURAÇÕES VIA SISTEMA ====================
+AMADEUS_CLIENT_ID = os.getenv("AMADEUS_CLIENT_ID")
+AMADEUS_CLIENT_SECRET = os.getenv("AMADEUS_CLIENT_SECRET")
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 
-# Remova seus códigos reais daqui para proteger sua conta
-TWILIO_ACCOUNT_SID = "COLE_SEU_ACCOUNT_SID_AQUI"
-TWILIO_AUTH_TOKEN = "COLE_SEU_AUTH_TOKEN_AQUI"
-TWILIO_NUMERO = "COLE_SEU_NUMERO_TWILIO_AQUI"
+TWILIO_ACCOUNT_SID = os.getenv("TWILIO_ACCOUNT_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_NUMERO = os.getenv("TWILIO_NUMERO")
+# =====================================================================
 
 CIDADES_ISCA = ["CWB", "FLN", "POA", "IGU", "EZE", "MVD", "SCL", "NVT"]
 # =====================================================================
