@@ -97,18 +97,25 @@ async def receber_dados_painel(update: Update, context: ContextTypes.DEFAULT_TYP
     
     await update.message.reply_text(resposta, parse_mode="Markdown", disable_web_page_preview=True)
 
-def main():
-    # 🔥 CORREÇÃO PARA O PYTHON 3.14+ NO RENDER:
-    import asyncio
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-    
-    # O seu código do main continua exatamente igual aqui para baixo:
+async def iniciar_bot():
+    # Toda a lógica que estava no seu antigo def main() entra aqui:
     app = Application.builder().token(TELEGRAM_TOKEN).build()
     
-    # (Seus comandos e handlers continuam aqui...)
+    # Seus comandos (start, etc) e handlers continuam aqui:
+    # app.add_handler(CommandHandler("start", start))
     
-    app.run_polling()
+    await app.initialize()
+    await app.start()
+    await app.updater.start_polling()
+    
+    # Mantém o bot vivo rodando
+    while True:
+        await asyncio.sleep(3600)
+
+def main():
+    import asyncio
+    # O asyncio.run cria e gerencia o loop automaticamente do jeito que o Python 3.14 exige
+    asyncio.run(iniciar_bot())
 
 if __name__ == "__main__":
     main()

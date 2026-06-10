@@ -56,8 +56,8 @@ if __name__ == "__main__":
     threading.Thread(target=loop_auto_ping, daemon=True).start()
     
     # 3. Dispara o bot e o scraper em paralelo
-    processo_bot = subprocess.Popen([sys.executable, "bot.py"])
-    processo_scraper = subprocess.Popen([sys.executable, "scraper.py"])
+    processo_bot = subprocess.Popen([sys.executable, "-u", "bot.py"])
+    processo_scraper = subprocess.Popen([sys.executable, "-u", "scraper.py"])
     
     processo_bot.wait()
     processo_scraper.wait()
