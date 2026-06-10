@@ -1,5 +1,8 @@
 import sys
 
+# =====================================================================
+# 🔥 CAIXA-PRETA: Captura erros de falta de biblioteca antes do app cair
+# =====================================================================
 try:
     import subprocess
     import os
@@ -39,6 +42,7 @@ class RenderHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_POST(self):
+        """Recebe os dados completos do painel do Telegram e grava no Neon"""
         content_length = int(self.headers['Content-Length'])
         post_data = self.rfile.read(content_length)
         
@@ -47,7 +51,7 @@ class RenderHandler(BaseHTTPRequestHandler):
             telegram_token = os.getenv("TELEGRAM_TOKEN")
             
             if not db_url:
-                print("🚨 [ERRO] DATABASE_URL vazia!")
+                print("🚨 [ERRO] DATABASE_URL vazia no recebimento do POST!")
                 self.send_response(500)
                 self._set_cors_headers()
                 self.end_headers()
@@ -72,28 +76,7 @@ class RenderHandler(BaseHTTPRequestHandler):
                 conn = psycopg2.connect(db_url)
                 cursor = conn.cursor()
                 
-                # Para evitar conflito de colunas do teste simples anterior, atualizamos a tabela
-                cursor.execute("DROP TABLE IF EXISTS radares;")
-                
-                cursor.execute('''
-                    CREATE TABLE IF NOT EXISTS radares (
-                        id SERIAL PRIMARY KEY,
-                        chat_id TEXT,
-                        origem TEXT,
-                        destino TEXT,
-                        alternativo TEXT,
-                        max_paradas INTEGER,
-                        skip_alternativa TEXT,
-                        data_partida TEXT,
-                        hora_min TEXT,
-                        hora_max TEXT,
-                        preco_alvo DOUBLE PRECISION,
-                        margem INTEGER,
-                        alerta_madrugada TEXT,
-                        telefone TEXT
-                    )
-                ''')
-                
+                # Insere o radar com a estrutura completa
                 cursor.execute('''
                     INSERT INTO radares (
                         chat_id, origem, destino, alternativo, max_paradas, 
@@ -110,9 +93,9 @@ class RenderHandler(BaseHTTPRequestHandler):
                 cursor.close()
                 conn.close()
                 
-                print(f"✅ [API] Radar Completo Salvo no Neon para o Chat {chat_id}")
+                print(f"✅ [API] Radar Premium Gravado com Sucesso para o Chat {chat_id}")
                 
-                # --- MONTAGEM DA SUA MENSAGEM VISUAL COMPLETA ---
+                # Montagem do Alerta Visual de Confirmacao
                 preco_maximo_alerta = preco_alvo * (1 + (margem / 100))
                 
                 if alerta_madrugada == "telegram":
@@ -122,12 +105,11 @@ class RenderHandler(BaseHTTPRequestHandler):
                 else:
                     estrategia_txt = "📢 Alerta de Sirene via aplicativo Pushover"
                     
-                # Link dinamico para o Google Flights
-                link_flights = f"https://www.google.com/travel/flights?q=from:{origem}:to:{destino}:date:{data_partida}"
+                link_flights = f"https://www.google.com/travel/flights?q=Flights%20to%20{destino}%20from%20{origem}%20on%20{data_partida}"
                 
                 msg_telegram = (
                     f"✅ *Radar Configurado com Sucesso!*\n\n"
-                    f"🛫 *Origem:* {origem.upper()}\n"
+                    f"1🛫 *Origem:* {origem.upper()}\n"
                     f"🛬 *Destino Principal:* {destino.upper()}\n"
                 )
                 if alternativo:
@@ -142,16 +124,15 @@ class RenderHandler(BaseHTTPRequestHandler):
                     f"_Rastreamento privado ativado de forma exclusiva para você!_"
                 )
                 
-                # Dispara a mensagem direto para o usuario do Telegram
+                # Dispara a mensagem para o chat do Telegram do usuario
                 url_tg_api = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
                 requests.post(url_tg_api, json={
                     "chat_id": chat_id,
                     "text": msg_telegram,
                     "parse_mode": "Markdown",
-                    "disable_web_page_preview": False
+                    "disable_web_page_preview": True
                 })
                 
-                # Responde sucesso para o frontend
                 self.send_response(200)
                 self.send_header("Content-type", "application/json")
                 self._set_cors_headers()
@@ -167,6 +148,48 @@ class RenderHandler(BaseHTTPRequestHandler):
             self.send_response(500)
             self._set_cors_headers()
             self.end_headers()
+
+
+def inicializar_banco_de_dados():
+    """Garante a sincronizacao da tabela estruturada antes dos scripts rodarem"""
+    db_url = os.getenv("DATABASE_URL")
+    if not db_url:
+        print("🚨 [ERRO] Nao foi possivel sincronizar o banco: DATABASE_URL ausente.")
+        return
+
+    print("🗄️ Sincronizando tabelas com a Nuvem (Neon)...")
+    try:
+        conn = psycopg2.connect(db_url)
+        cursor = conn.cursor()
+        
+        # Remove a tabela antiga se houver descompasso de colunas dos testes simples
+        cursor.execute("DROP TABLE IF EXISTS radares CASCADE;")
+        
+        # Cria a tabela definitiva com as colunas completas
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS radares (
+                id SERIAL PRIMARY KEY,
+                chat_id TEXT,
+                origem TEXT,
+                destino TEXT,
+                alternativo TEXT,
+                max_paradas INTEGER,
+                skip_alternativa TEXT,
+                data_partida TEXT,
+                hora_min TEXT,
+                hora_max TEXT,
+                preco_alvo DOUBLE PRECISION,
+                margem INTEGER,
+                alerta_madrugada TEXT,
+                telefone TEXT
+            )
+        ''')
+        conn.commit()
+        cursor.close()
+        conn.close()
+        print("🟩 Banco de dados estruturado e pronto para uso!")
+    except Exception as e:
+        print(f"❌ Erro na sincronizacao inicial do banco: {e}")
 
 
 def ligar_servidor_http():
@@ -188,9 +211,15 @@ def loop_auto_ping():
 
 if __name__ == "__main__":
     print("🚀 Iniciando o ecossistema com API PostgreSQL externa...")
+    
+    # 1. Ajusta o banco de dados primeiro de tudo!
+    inicializar_banco_de_dados()
+    
+    # 2. Liga as portas de rede da API
     threading.Thread(target=ligar_servidor_http, daemon=True).start()
     threading.Thread(target=loop_auto_ping, daemon=True).start()
     
+    # 3. Dispara os motores filhos sabendo que a tabela ja existe perfeitamente
     processo_bot = subprocess.Popen([sys.executable, "-u", "bot.py"])
     processo_scraper = subprocess.Popen([sys.executable, "-u", "scraper.py"])
     
