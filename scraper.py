@@ -14,23 +14,18 @@ TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_NUMERO = os.getenv("TWILIO_NUMERO")
 # =====================================================================
 
-# Lista de destinos para monitoramento automático (Cidades Isca)
-CIDADES_ISCA = ["CWB", "FLN", "POA", "IGU", "EZE", "MVD", "SCL", "NVT"]
 DB_NAME = "radares.db"
 
 def disparar_ligacao_twilio():
-    """Faz a chamada telefônica via Twilio avisa sobre a passagem na madrugada"""
+    """Faz a chamada telefônica via Twilio para avisar sobre a passagem na madrugada"""
     try:
         client = Client(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN)
-        
-        # O Twilio vai ligar para o número configurado no painel da nuvem
-        # Se preferir deixar um número fixo, mude para: to="+5511999999999"
         destino_ligacao = os.getenv("TWILIO_NUMERO_DESTINO", TWILIO_NUMERO) 
         
         mensagem_twiml = (
             '<Response>'
             '<Say language="pt-BR" voice="alice">'
-            'Atenção! Passagem promocional encontrada na madrugada! Verifique o seu Telegram imediatamente!'
+            'Atenção! Uma das passagens configuradas no seu radar foi encontrada! Verifique o Telegram!'
             '</Say>'
             '</Response>'
         )
@@ -46,7 +41,7 @@ def disparar_ligacao_twilio():
 
 
 def enviar_alerta_telegram(chat_id, mensagem):
-    """Envia mensagem de texto formatada para o usuário no Telegram"""
+    """Envia mensagem de texto formatada para o usuário específico no Telegram"""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": chat_id,
@@ -62,15 +57,12 @@ def enviar_alerta_telegram(chat_id, mensagem):
 
 
 def pesquisar_passagens_travelpayouts(origem, destino):
-    """Consulta a API da Travelpayouts (Aviasales) em busca dos preços mais recentes em cache"""
+    """Consulta a API da Travelpayouts em busca dos preços mais recentes em cache"""
     url = "https://api.travelpayouts.com/v2/prices/latest"
-    
-    headers = {
-        "X-Access-Token": TRAVELPAYOUTS_TOKEN
-    }
+    headers = {"X-Access-Token": TRAVELPAYOUTS_TOKEN}
     
     params = {
-        "origin": origem,       # Corrigido para bater com o argumento da função
+        "origin": origem,
         "destination": destino,
         "currency": "BRL",
         "period_type": "year",
@@ -94,13 +86,12 @@ def pesquisar_passagens_travelpayouts(origem, destino):
 
 
 def executar_varredura():
-    """Varre o banco de dados de radares e procura ofertas de passagens"""
-    print(f"🔄 [{datetime.now().strftime('%H:%M:%S')}] Iniciando varredura de preços...")
+    """Varre apenas os radares cadastrados por você e seus amigos"""
+    print(f"🔄 [{datetime.now().strftime('%H:%M:%S')}] Iniciando varredura dos radares ativos...")
     
     conn = sqlite3.connect(DB_NAME)
     cursor = conn.cursor()
     
-    # Garante a existência da tabela caso o bot ainda não tenha rodado
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS radares (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -112,7 +103,7 @@ def executar_varredura():
     ''')
     conn.commit()
     
-    # 1. Checa os radares personalizados que os usuários cadastraram
+    # Busca estritamente o que foi inserido via painel/bot
     cursor.execute("SELECT chat_id, origem, destino, preco_maximo FROM radares")
     radares_usuarios = cursor.fetchall()
     
@@ -123,60 +114,32 @@ def executar_varredura():
             preco_real = voo.get("value")
             if preco_real and preco_real <= preco_maximo:
                 msg = (
-                    f"🚨 *ALERTA DE PASSAGEM BARATA!*\n\n"
+                    f"🚨 *RADAR DISPARADO!*\n\n"
                     f"✈️ *Rota:* {origem} ➡️ {destino}\n"
                     f"💵 *Preço encontrado:* R$ {preco_real:.2f}\n"
                     f"🎯 *Seu limite:* R$ {preco_maximo:.2f}\n"
                     f"📅 *Data de Ida:* {voo.get('depart_date')}\n\n"
-                    f"🔗 _Corra para o painel para emitir antes que mude!_"
+                    f"🔗 _Acesse o painel para garantir a emissão!_"
                 )
+                # Envia a mensagem exatamente para o amigo (chat_id) que criou o radar
                 enviar_alerta_telegram(chat_id, msg)
                 
-                # Se encontrar a oferta na calada da noite (00h às 06h), liga para acordar!
+                # Alerta sonoro por telefone se for de madrugada
                 hora_atual = datetime.now().hour
                 if 0 <= hora_atual <= 6:
                     disparar_ligacao_twilio()
                 break
-        time.sleep(1.5)  # Delay leve para respeitar os limites da API
-        
-    # 2. Checa as Cidades Isca (Varredura geral partindo de SP como Hub padrão)
-    origem_hub = "SAO"
-    for destino_isca in CIDADES_ISCA:
-        voos_isca = pesquisar_passagens_travelpayouts(origem_hub, destino_isca)
-        for voo in voos_isca:
-            preco_isca = voo.get("value")
-            
-            # Se uma cidade isca estiver com preço absurdamente baixo (Ex: Menor que R$ 450)
-            if preco_isca and preco_isca < 450:
-                # Dispara o alerta geral para você (coloque seu Chat ID real do Telegram no painel do Render)
-                meu_chat_id = os.getenv("TELEGRAM_CHAT_ID_ADMIN")
-                if meu_chat_id:
-                    msg_isca = (
-                        f"🔥 *PROMOÇÃO ISCA DETECTADA!*\n\n"
-                        f"✈️ *Rota:* {origem_hub} ➡️ {destino_isca}\n"
-                        f"💵 *Preço bizarro:* R$ {preco_isca:.2f}\n"
-                        f"📅 *Data:* {voo.get('depart_date')}"
-                    )
-                    enviar_alerta_telegram(meu_chat_id, msg_isca)
-                    
-                    hora_atual = datetime.now().hour
-                    if 0 <= hora_atual <= 6:
-                        disparar_ligacao_twilio()
-                break
         time.sleep(1.5)
 
     conn.close()
-    print("💤 Varredura concluída. Aguardando próximo ciclo...")
+    print("💤 Varredura concluída. Aguardando próximo ciclo de 30 minutos...")
 
 
 if __name__ == "__main__":
-    print("🕵️‍♂️ Motor do Scraper Travelpayouts Inicializado com Sucesso!")
-    
-    # Roda em loop contínuo a cada 30 minutos
+    print("🕵️‍♂️ Motor do Scraper Privado Inicializado!")
     while True:
         try:
             executar_varredura()
         except Exception as e:
-            print(f"❌ Erro crítico no loop do scraper: {e}")
-        
-        time.sleep(1800)  # 1800 segundos = 30 minutos
+            print(f"❌ Erro crítico no loop: {e}")
+        time.sleep(1800)
