@@ -20,7 +20,7 @@ def do_POST(self):
             destino = dados.get("destino")
             preco_maximo = dados.get("preco_maximo")
             
-            if chat_id and起源 and destino and preco_maximo:
+            if chat_id and origem and destino and preco_maximo:
                 # Usa a variável db_url que validamos acima
                 conn = psycopg2.connect(db_url)
                 cursor = conn.cursor()
