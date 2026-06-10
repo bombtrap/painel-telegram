@@ -6,13 +6,19 @@ import time
 import requests
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-# Servidor fantasma para o Render não dar erro de Porta (Port Timeout)
+# Servidor fantasma atualizado para aceitar requisições GET e HEAD
 class RenderHandler(BaseHTTPRequestHandler):
     def do_GET(self):
         self.send_response(200)
         self.send_header("Content-type", "text/html")
         self.end_headers()
         self.wfile.write(b"Rastreador de Voos Ativo e Operando 24h!")
+        
+    def do_HEAD(self):
+        # Respondendo com sucesso 200 para os pings do UptimeRobot
+        self.send_response(200)
+        self.send_header("Content-type", "text/html")
+        self.end_headers()
 
 def ligar_servidor_http():
     porta = int(os.environ.get("PORT", 8080))
@@ -22,7 +28,6 @@ def ligar_servidor_http():
 
 def loop_auto_ping():
     """Faz um ping na própria URL a cada 12 minutos para impedir o Render de dormir"""
-    # O Render gera essa variável automaticamente com o link do seu app (ex: https://seu-app.onrender.com)
     url_publica = os.environ.get("RENDER_EXTERNAL_URL")
     
     if not url_publica:
@@ -30,8 +35,6 @@ def loop_auto_ping():
         return
         
     print(f"📶 Sistema de Auto-Ping inicializado para: {url_publica}")
-    
-    # Aguarda 3 minutos antes do primeiro ping para dar tempo do servidor ligar 100%
     time.sleep(180)
     
     while True:
@@ -41,7 +44,6 @@ def loop_auto_ping():
         except Exception as e:
             print(f"⚠️ [Auto-Ping] Falha ao tentar pingar o servidor: {e}")
         
-        # 720 segundos = 12 minutos (O Render só dorme se passar 15 minutos sem tráfego)
         time.sleep(720)
 
 if __name__ == "__main__":
@@ -50,13 +52,12 @@ if __name__ == "__main__":
     # 1. Liga o servidor HTTP que o Render exige
     threading.Thread(target=ligar_servidor_http, daemon=True).start()
     
-    # 2. Liga o robô interno de Auto-Ping para manter o servidor ativo 24h
+    # 2. Liga o robô interno de Auto-Ping
     threading.Thread(target=loop_auto_ping, daemon=True).start()
     
     # 3. Dispara o bot e o scraper em paralelo
     processo_bot = subprocess.Popen([sys.executable, "bot.py"])
     processo_scraper = subprocess.Popen([sys.executable, "scraper.py"])
     
-    # Mantém o script principal vivo tomando conta de tudo
     processo_bot.wait()
     processo_scraper.wait()

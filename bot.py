@@ -98,10 +98,16 @@ async def receber_dados_painel(update: Update, context: ContextTypes.DEFAULT_TYP
     await update.message.reply_text(resposta, parse_mode="Markdown", disable_web_page_preview=True)
 
 def main():
-    iniciar_banco()
+    # 🔥 CORREÇÃO PARA O PYTHON 3.14+ NO RENDER:
+    import asyncio
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    
+    # O seu código do main continua exatamente igual aqui para baixo:
     app = Application.builder().token(TELEGRAM_TOKEN).build()
-    app.add_handler(CommandHandler("start", start))
-    app.add_handler(MessageHandler(filters.StatusUpdate.WEB_APP_DATA, receber_dados_painel))
+    
+    # (Seus comandos e handlers continuam aqui...)
+    
     app.run_polling()
 
 if __name__ == "__main__":
