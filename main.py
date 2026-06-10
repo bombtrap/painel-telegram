@@ -76,7 +76,6 @@ class RenderHandler(BaseHTTPRequestHandler):
                 conn = psycopg2.connect(db_url)
                 cursor = conn.cursor()
                 
-                # Insere o radar com a estrutura completa
                 cursor.execute('''
                     INSERT INTO radares (
                         chat_id, origem, destino, alternativo, max_paradas, 
@@ -95,7 +94,6 @@ class RenderHandler(BaseHTTPRequestHandler):
                 
                 print(f"✅ [API] Radar Premium Gravado com Sucesso para o Chat {chat_id}")
                 
-                # Montagem do Alerta Visual de Confirmacao
                 preco_maximo_alerta = preco_alvo * (1 + (margem / 100))
                 
                 if alerta_madrugada == "telegram":
@@ -109,7 +107,7 @@ class RenderHandler(BaseHTTPRequestHandler):
                 
                 msg_telegram = (
                     f"✅ *Radar Configurado com Sucesso!*\n\n"
-                    f"1🛫 *Origem:* {origem.upper()}\n"
+                    f"🛫 *Origem:* {origem.upper()}\n"
                     f"🛬 *Destino Principal:* {destino.upper()}\n"
                 )
                 if alternativo:
@@ -124,7 +122,6 @@ class RenderHandler(BaseHTTPRequestHandler):
                     f"_Rastreamento privado ativado de forma exclusiva para você!_"
                 )
                 
-                # Dispara a mensagem para o chat do Telegram do usuario
                 url_tg_api = f"https://api.telegram.org/bot{telegram_token}/sendMessage"
                 requests.post(url_tg_api, json={
                     "chat_id": chat_id,
@@ -151,7 +148,7 @@ class RenderHandler(BaseHTTPRequestHandler):
 
 
 def inicializar_banco_de_dados():
-    """Garante a sincronizacao da tabela estruturada antes dos scripts rodarem"""
+    """Garante a sincronizacao da tabela estruturada sem apagar os dados existentes"""
     db_url = os.getenv("DATABASE_URL")
     if not db_url:
         print("🚨 [ERRO] Nao foi possivel sincronizar o banco: DATABASE_URL ausente.")
@@ -162,10 +159,7 @@ def inicializar_banco_de_dados():
         conn = psycopg2.connect(db_url)
         cursor = conn.cursor()
         
-        # Remove a tabela antiga se houver descompasso de colunas dos testes simples
-        cursor.execute("DROP TABLE IF EXISTS radares CASCADE;")
-        
-        # Cria a tabela definitiva com as colunas completas
+        # 🔥 CORRIGIDO: Removido o DROP TABLE! Agora usamos apenas o CREATE TABLE IF NOT EXISTS
         cursor.execute('''
             CREATE TABLE IF NOT EXISTS radares (
                 id SERIAL PRIMARY KEY,
@@ -211,15 +205,11 @@ def loop_auto_ping():
 
 if __name__ == "__main__":
     print("🚀 Iniciando o ecossistema com API PostgreSQL externa...")
-    
-    # 1. Ajusta o banco de dados primeiro de tudo!
     inicializar_banco_de_dados()
     
-    # 2. Liga as portas de rede da API
     threading.Thread(target=ligar_servidor_http, daemon=True).start()
     threading.Thread(target=loop_auto_ping, daemon=True).start()
     
-    # 3. Dispara os motores filhos sabendo que a tabela ja existe perfeitamente
     processo_bot = subprocess.Popen([sys.executable, "-u", "bot.py"])
     processo_scraper = subprocess.Popen([sys.executable, "-u", "scraper.py"])
     
