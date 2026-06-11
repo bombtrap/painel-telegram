@@ -27,15 +27,14 @@
         button.submit-btn { width: 100%; padding: 15px; background-color: var(--button-color); color: var(--button-text); border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 10px; }
         .section-title { margin-top: 25px; margin-bottom: 10px; font-size: 16px; border-bottom: 1px solid var(--hint-color); padding-bottom: 5px; color: var(--button-color); }
         
-        /* Estilos do Autocomplete Restaurados e Adaptados */
+        /* 🛠️ CURATIVO DO AUTOCOMPLETE: Posicionamento absoluto corrigido e z-index elevado */
         .autocomplete-container { position: relative; width: 100%; }
         .suggestions-list {
-            position: absolute; top: 100%; left: 0; width: 100%;
+            position: absolute; top: 45px; left: 0; width: 100%;
             background-color: var(--bg-color);
             border: 1px solid var(--hint-color); border-radius: 8px;
-            max-height: 200px; overflow-y: auto; z-index: 999;
-            box-shadow: 0px 4px 10px rgba(0,0,0,0.15); display: none;
-            margin-top: 2px;
+            max-height: 200px; overflow-y: auto; z-index: 9999;
+            box-shadow: 0px 8px 16px rgba(0,0,0,0.25); display: none;
         }
         .suggestion-item {
             padding: 12px; cursor: pointer; font-size: 14px;
@@ -53,16 +52,20 @@
     <form id="radarForm">
         <div class="section-title">📍 Rotas Principais</div>
         
-        <div class="form-group autocomplete-container">
+        <div class="form-group">
             <label>Origem (Onde você está?)</label>
-            <input type="text" id="origemInput" placeholder="Ex: Manaus ou MAO" autocomplete="off" required>
-            <div id="origemSuggestions" class="suggestions-list"></div>
+            <div class="autocomplete-container">
+                <input type="text" id="origemInput" placeholder="Ex: Manaus ou MAO" autocomplete="off" required>
+                <div id="origemSuggestions" class="suggestions-list"></div>
+            </div>
         </div>
         
-        <div class="form-group autocomplete-container">
+        <div class="form-group">
             <label>Destino (Para onde quer ir?)</label>
-            <input type="text" id="destinoInput" placeholder="Ex: São Paulo ou SAO" autocomplete="off" required>
-            <div id="destinoSuggestions" class="suggestions-list"></div>
+            <div class="autocomplete-container">
+                <input type="text" id="destinoInput" placeholder="Ex: São Paulo ou SAO" autocomplete="off" required>
+                <div id="destinoSuggestions" class="suggestions-list"></div>
+            </div>
         </div>
 
         <div class="form-group"><label>Data de Partida</label><input type="date" id="data_partida" required></div>
@@ -90,10 +93,12 @@
         </div>
 
         <div class="section-title">🚌 Rota Alternativa (Opcional)</div>
-        <div class="form-group autocomplete-container">
+        <div class="form-group">
             <label>Aeroporto Alternativo</label>
-            <input type="text" id="alternativoInput" placeholder="Ex: Rio de Janeiro" autocomplete="off">
-            <div id="alternativoSuggestions" class="suggestions-list"></div>
+            <div class="autocomplete-container">
+                <input type="text" id="alternativoInput" placeholder="Ex: Rio de Janeiro" autocomplete="off">
+                <div id="alternativoSuggestions" class="suggestions-list"></div>
+            </div>
         </div>
         
         <div id="div_alternativo" class="hidden">
@@ -129,7 +134,7 @@
         const chat_id = tg.initDataUnsafe?.user?.id ? tg.initDataUnsafe.user.id.toString() : "123456789";
 
         // ==========================================
-        // 🛩️ BANCO DE DADOS E AUTOCOMPLETAR
+        // 🛩️ BANCO DE DADOS DE AEROPORTOS
         // ==========================================
         const BANCO_AEROPORTOS = [
             { nome: "São Paulo - TODOS OS AEROPORTOS (SAO)", iata: "SAO" },
@@ -156,4 +161,65 @@
             { nome: "Natal - Aluízio Alves (NAT)", iata: "NAT" },
             { nome: "Maceió - Zumbi dos Palmares (MCZ)", iata: "MCZ" },
             { nome: "João Pessoa - Castro Pinto (JPA)", iata: "JPA" },
-            { nome: "Aracaju - Santa Maria (AJU)", iata: "AJ
+            { nome: "Aracaju - Santa Maria (AJU)", iata: "AJU" },
+            { nome: "São Luís - Marechal Cunha Machado (SLZ)", iata: "SLZ" },
+            { nome: "Teresina - Senador Petrônio Portella (THE)", iata: "THE" },
+            { nome: "Campo Grande (CGR)", iata: "CGR" },
+            { nome: "Porto Velho - Governador Jorge Teixeira (PVH)", iata: "PVH" },
+            { nome: "Macapá - Alberto Alcolumbre (MCP)", iata: "MCP" },
+            { nome: "Rio Branco - Plácido de Castro (RBR)", iata: "RBR" },
+            { nome: "Boa Vista - Atlas Brasil Cantanhede (BVB)", iata: "BVB" },
+            { nome: "Palmas - Brigadeiro Lysias Rodrigues (PMW)", iata: "PMW" },
+            { nome: "Navegantes - Ministro Victor Konder (NVT)", iata: "NVT" },
+            { nome: "Foz do Iguaçu - Cataratas (IGU)", iata: "IGU" }
+        ];
+
+        const codigosSelecionados = { origem: "", destino: "", alternativo: "" };
+
+        function vincularAutocomplete(inputId, suggestionsId, chaveDicionario) {
+            const input = document.getElementById(inputId);
+            const box = document.getElementById(suggestionsId);
+
+            input.addEventListener("input", function() {
+                const termo = this.value.toLowerCase().trim();
+                box.innerHTML = "";
+                
+                if (!termo) {
+                    box.style.display = "none";
+                    codigosSelecionados[chaveDicionario] = "";
+                    if(chaveDicionario === 'alternativo') document.getElementById('div_alternativo').classList.add('hidden');
+                    return;
+                }
+
+                const filtrados = BANCO_AEROPORTOS.filter(a => 
+                    a.nome.toLowerCase().includes(termo) || a.iata.toLowerCase().includes(termo)
+                );
+
+                if (filtrados.length > 0) {
+                    box.style.display = "block";
+                    filtrados.forEach(item => {
+                        const div = document.createElement("div");
+                        div.className = "suggestion-item";
+                        div.innerText = item.nome;
+                        
+                        div.addEventListener("click", function() {
+                            input.value = item.nome;
+                            codigosSelecionados[chaveDicionario] = item.iata;
+                            box.style.display = "none";
+                            
+                            if(chaveDicionario === 'alternativo') document.getElementById('div_alternativo').classList.remove('hidden');
+                        });
+                        box.appendChild(div);
+                    });
+                } else {
+                    box.style.display = "none";
+                }
+            });
+
+            document.addEventListener("click", function(e) {
+                if (e.target !== input) box.style.display = "none";
+            });
+        }
+
+        vincularAutocomplete("origemInput", "origemSuggestions", "origem");
+        vincular

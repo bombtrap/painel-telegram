@@ -2,6 +2,7 @@ import os
 import re
 import telebot
 import psycopg2
+import time
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -33,14 +34,18 @@ def saudacao_livre(message):
 @bot.message_handler(commands=['novo'])
 def abrir_painel(message):
     url_final = TUNNEL_URL if TUNNEL_URL.endswith("/") else f"{TUNNEL_URL}/"
+    
+    # 🔥 CACHE BUSTER: Injeta o timestamp atual para explodir o cache do Telegram
+    url_atualizada = f"{url_final}?v={int(time.time())}"
+    
     markup = InlineKeyboardMarkup()
     botao = InlineKeyboardButton(
         text="🎛️ Configurar Novo Radar Otimizado", 
-        web_app=telebot.types.WebAppInfo(url=url_final)
+        web_app=telebot.types.WebAppInfo(url=url_atualizada)
     )
     markup.add(botao)
     bot.send_message(message.chat.id, "💡 Clique abaixo para carregar o painel modular:", reply_markup=markup)
-
+    
 @bot.message_handler(commands=['radares'])
 def listar_radares(message):
     chat_id = str(message.chat.id)
