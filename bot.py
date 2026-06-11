@@ -25,6 +25,11 @@ def enviar_boas_vindas(message):
 @bot.message_handler(commands=['start', 'help', 'comandos'])
 def comando_ajuda(message):
     enviar_boas_vindas(message)
+    
+    # Adiciona esta função para capturar as saudações
+@bot.message_handler(func=lambda message: message.text and any(word in message.text.lower() for word in ["oi", "ola", "olá", "eae", "salve"]))
+def saudacao_automatica(message):
+    enviar_boas_vindas(message)
 
 @bot.message_handler(commands=['novo'])
 def abrir_painel(message):
