@@ -34,21 +34,23 @@ def iniciar_banco():
                 margem NUMERIC
             )
         """)
-        # Checa se as colunas novas de telefone já existem, se não, ele injeta na hora
         cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='radares' AND column_name='alerta_madrugada'")
         if not cursor.fetchone():
             cursor.execute("ALTER TABLE radares ADD COLUMN alerta_madrugada VARCHAR(20) DEFAULT 'telegram', ADD COLUMN telefone VARCHAR(20)")
-            
         conn.commit()
         cursor.close()
         conn.close()
-        print("🗄️ Tabela 'radares' sincronizada no Neon (com colunas de Twilio)!")
+        print("🗄️ Tabela 'radares' verificada/atualizada no Neon!")
     except Exception as e:
-        print(f"❌ Erro ao iniciar banco de dados: {e}")
+        print(f"❌ Erro ao iniciar base de dados: {e}")
 
 @app.route('/')
 def index():
     return send_from_directory('.', 'index.html')
+
+@app.route('/favicon.ico')
+def favicon():
+    return '', 204
 
 @app.route('/api/radar/<int:radar_id>', methods=['GET'])
 def get_radar(radar_id):
@@ -59,10 +61,12 @@ def get_radar(radar_id):
         radar = cursor.fetchone()
         cursor.close()
         conn.close()
-        
         if radar:
             if radar.get('data_partida'):
-                radar['data_partida'] = radar['data_partida'].strftime('%Y-%m-%d')
+                try:
+                    radar['data_partida'] = radar['data_partida'].strftime('%Y-%m-%d')
+                except AttributeError:
+                    pass
             return jsonify(radar), 200
         return jsonify({"erro": "Radar não encontrado"}), 404
     except Exception as e:
@@ -72,11 +76,9 @@ def get_radar(radar_id):
 def salvar_radar():
     dados = request.json
     radar_id = dados.get('id')
-    
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
-        
         if radar_id:
             cursor.execute("""
                 UPDATE radares SET 
@@ -108,12 +110,10 @@ def salvar_radar():
                 dados['dias_antes'], dados['dias_depois'], dados['preco_alvo'], dados['margem'],
                 dados['alerta_madrugada'], dados['telefone']
             ))
-            
         conn.commit()
         cursor.close()
         conn.close()
         return jsonify({"status": "sucesso"}), 200
-        
     except Exception as e:
         return jsonify({"erro": str(e)}), 500
 
@@ -123,19 +123,15 @@ def loop_auto_ping():
         return
     time.sleep(120)
     while True:
-        try: 
-            requests.get(url_publica)
-            print("🏓 [Auto-Ping] Render mantido acordado.")
+        try: requests.get(url_publica)
         except: pass
-        time.sleep(600) # Ping a cada 10 minutos
+        time.sleep(600)
 
 if __name__ == '__main__':
-    print("🚀 Iniciando ecossistema de rastreamento...")
+    print("🚀 A iniciar ecossistema de rastreamento...")
     iniciar_banco()
-    
     threading.Thread(target=loop_auto_ping, daemon=True).start()
     subprocess.Popen([sys.executable, "-u", "bot.py"])
     subprocess.Popen([sys.executable, "-u", "scraper.py"])
-    
     porta = int(os.getenv("PORT", 8080))
     app.run(host='0.0.0.0', port=porta)
