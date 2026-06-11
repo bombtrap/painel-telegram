@@ -6,26 +6,40 @@
     <title>Painel do Rastreador</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--tg-theme-bg-color, #ffffff);
-            color: var(--tg-theme-text-color, #222222);
-            margin: 0; padding: 15px;
-        }
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--tg-theme-bg-color, #ffffff); color: var(--tg-theme-text-color, #222222); margin: 0; padding: 15px; }
         .section { margin-bottom: 20px; padding: 10px; border-bottom: 1px solid rgba(0,0,0,0.1); }
         label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 14px; }
         input, select { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; }
         button { width: 100%; padding: 12px; background-color: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #ffffff); border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
+        
+        /* 🛠️ CSS do Autocomplete Restaurado */
+        .autocomplete-container { position: relative; width: 100%; }
+        .suggestions-list { 
+            position: absolute; top: 65px; left: 0; width: 100%; 
+            background-color: var(--tg-theme-bg-color, #ffffff); 
+            border: 1px solid #ccc; border-radius: 8px; 
+            max-height: 200px; overflow-y: auto; z-index: 9999; 
+            box-shadow: 0px 8px 16px rgba(0,0,0,0.2); display: none; 
+        }
+        .suggestion-item { padding: 12px; cursor: pointer; font-size: 14px; border-bottom: 1px solid rgba(0,0,0,0.05); }
+        .suggestion-item:last-child { border-bottom: none; }
+        .suggestion-item:hover { background-color: var(--tg-theme-button-color, #2481cc); color: #ffffff; }
     </style>
 </head>
 <body>
 
     <div class="section">
-        <label>Origem (Ex: MAO)</label>
-        <input type="text" id="origem" placeholder="Código IATA">
+        <label>Origem (Onde você está?)</label>
+        <div class="autocomplete-container">
+            <input type="text" id="origemInput" placeholder="Ex: Manaus ou MAO" autocomplete="off">
+            <div id="origemSuggestions" class="suggestions-list"></div>
+        </div>
         
-        <label>Destino (Ex: GRU)</label>
-        <input type="text" id="destino" placeholder="Código IATA">
+        <label>Destino (Para onde quer ir?)</label>
+        <div class="autocomplete-container">
+            <input type="text" id="destinoInput" placeholder="Ex: São Paulo ou SAO" autocomplete="off">
+            <div id="destinoSuggestions" class="suggestions-list"></div>
+        </div>
 
         <label>Data da Viagem</label>
         <input type="date" id="dataPartida">
@@ -52,13 +66,115 @@
         let tg = window.Telegram.WebApp;
         tg.expand();
 
+        const BANCO_AEROPORTOS = [
+            { nome: "São Paulo - TODOS OS AEROPORTOS (SAO)", iata: "SAO" },
+            { nome: "São Paulo - Guarulhos (GRU)", iata: "GRU" },
+            { nome: "São Paulo - Congonhas (CGH)", iata: "CGH" },
+            { nome: "São Paulo - Campinas (VCP)", iata: "VCP" },
+            { nome: "Rio de Janeiro - TODOS OS AEROPORTOS (RIO)", iata: "RIO" },
+            { nome: "Rio de Janeiro - Galeão (GIG)", iata: "GIG" },
+            { nome: "Rio de Janeiro - Santos Dumont (SDU)", iata: "SDU" },
+            { nome: "Manaus - Eduardo Gomes (MAO)", iata: "MAO" },
+            { nome: "Brasília - Presidente Juscelino Kubitschek (BSB)", iata: "BSB" },
+            { nome: "Belo Horizonte - Confins (CNF)", iata: "CNF" },
+            { nome: "Belo Horizonte - Pampulha (PLU)", iata: "PLU" },
+            { nome: "Salvador - Dep. Luís Eduardo Magalhães (SSA)", iata: "SSA" },
+            { nome: "Recife - Guararapes (REC)", iata: "REC" },
+            { nome: "Fortaleza - Pinto Martins (FOR)", iata: "FOR" },
+            { nome: "Curitiba - Afonso Pena (CWB)", iata: "CWB" },
+            { nome: "Porto Alegre - Salgado Filho (POA)", iata: "POA" },
+            { nome: "Florianópolis - Hercílio Luz (FLN)", iata: "FLN" },
+            { nome: "Belém - Val-de-Cans (BEL)", iata: "BEL" },
+            { nome: "Goiânia - Santa Genoveva (GYN)", iata: "GYN" },
+            { nome: "Cuiabá - Marechal Rondon (CGB)", iata: "CGB" },
+            { nome: "Vitória - Eurico de Aguiar Salles (VIX)", iata: "VIX" },
+            { nome: "Natal - Aluízio Alves (NAT)", iata: "NAT" },
+            { nome: "Maceió - Zumbi dos Palmares (MCZ)", iata: "MCZ" },
+            { nome: "João Pessoa - Castro Pinto (JPA)", iata: "JPA" },
+            { nome: "Aracaju - Santa Maria (AJU)", iata: "AJU" },
+            { nome: "São Luís - Marechal Cunha Machado (SLZ)", iata: "SLZ" },
+            { nome: "Teresina - Senador Petrônio Portella (THE)", iata: "THE" },
+            { nome: "Campo Grande (CGR)", iata: "CGR" },
+            { nome: "Porto Velho - Governador Jorge Teixeira (PVH)", iata: "PVH" },
+            { nome: "Macapá - Alberto Alcolumbre (MCP)", iata: "MCP" },
+            { nome: "Rio Branco - Plácido de Castro (RBR)", iata: "RBR" },
+            { nome: "Boa Vista - Atlas Brasil Cantanhede (BVB)", iata: "BVB" },
+            { nome: "Palmas - Brigadeiro Lysias Rodrigues (PMW)", iata: "PMW" },
+            { nome: "Navegantes - Ministro Victor Konder (NVT)", iata: "NVT" },
+            { nome: "Foz do Iguaçu - Cataratas (IGU)", iata: "IGU" }
+        ];
+
+        const codigosSelecionados = { origem: "", destino: "" };
+
+        function vincularAutocomplete(inputId, suggestionsId, chave) {
+            const input = document.getElementById(inputId);
+            const box = document.getElementById(suggestionsId);
+
+            input.addEventListener("input", function() {
+                const termo = this.value.toLowerCase().trim();
+                box.innerHTML = "";
+                
+                if (!termo) {
+                    box.style.display = "none";
+                    codigosSelecionados[chave] = "";
+                    return;
+                }
+
+                let filtrados = BANCO_AEROPORTOS.filter(a => 
+                    a.nome.toLowerCase().includes(termo) || a.iata.toLowerCase().includes(termo)
+                );
+
+                // Força o "TODOS OS AEROPORTOS" a ficar no topo
+                filtrados.sort((a, b) => {
+                    const aTodos = a.nome.includes("TODOS OS AEROPORTOS");
+                    const bTodos = b.nome.includes("TODOS OS AEROPORTOS");
+                    if (aTodos && !bTodos) return -1;
+                    if (!aTodos && bTodos) return 1;
+                    return 0;
+                });
+
+                if (filtrados.length > 0) {
+                    box.style.display = "block";
+                    filtrados.forEach(item => {
+                        const div = document.createElement("div");
+                        div.className = "suggestion-item";
+                        div.innerText = item.nome;
+                        div.addEventListener("click", function() {
+                            input.value = item.nome;
+                            codigosSelecionados[chave] = item.iata;
+                            box.style.display = "none";
+                        });
+                        box.appendChild(div);
+                    });
+                } else {
+                    box.style.display = "none";
+                }
+            });
+
+            document.addEventListener("click", function(e) {
+                if (e.target !== input) box.style.display = "none";
+            });
+        }
+
+        vincularAutocomplete("origemInput", "origemSuggestions", "origem");
+        vincularAutocomplete("destinoInput", "destinoSuggestions", "destino");
+
         document.getElementById("btnSubmeter").addEventListener("click", function() {
+            // Se o usuário digitou mas esqueceu de clicar na lista, pega os 3 primeiros caracteres
+            let iataOrigem = codigosSelecionados.origem || document.getElementById('origemInput').value.substring(0,3).toUpperCase();
+            let iataDestino = codigosSelecionados.destino || document.getElementById('destinoInput').value.substring(0,3).toUpperCase();
+
+            if (!iataOrigem || !iataDestino || iataOrigem.length < 3 || iataDestino.length < 3) {
+                alert("Por favor, selecione os aeroportos na lista!");
+                return;
+            }
+
             const dadosConfig = {
                 chat_id: tg.initDataUnsafe?.user?.id || "teste",
-                origem: document.getElementById('origem').value.toUpperCase(),
-                destino: document.getElementById('destino').value.toUpperCase(),
+                origem: iataOrigem,
+                destino: iataDestino,
                 data_partida: document.getElementById('dataPartida').value,
-                preco_alvo: parseFloat(document.getElementById('precoAlvo').value),
+                preco_alvo: parseFloat(document.getElementById('precoAlvo').value) || 0,
                 margem: parseInt(document.getElementById('margem').value) || 0,
                 alerta_madrugada: document.getElementById('tipoAlertaMadrugada').value,
                 telefone: document.getElementById('telefoneUsuario').value || ""
