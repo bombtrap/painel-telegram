@@ -2,320 +2,196 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel do Rastreador</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Motor de Busca - Radar</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            background-color: var(--tg-theme-bg-color, #ffffff);
-            color: var(--tg-theme-text-color, #222222);
-            margin: 0; padding: 15px;
+        :root {
+            --bg-color: var(--tg-theme-bg-color, #ffffff);
+            --text-color: var(--tg-theme-text-color, #000000);
+            --hint-color: var(--tg-theme-hint-color, #999999);
+            --button-color: var(--tg-theme-button-color, #2481cc);
+            --button-text: var(--tg-theme-button-text-color, #ffffff);
+            --input-bg: var(--tg-theme-secondary-bg-color, #f4f4f5);
         }
-        .section { margin-bottom: 20px; padding: 10px; border-bottom: 1px solid rgba(0,0,0,0.1); }
-        label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 14px; }
-        .aviso-urgente {
-            background-color: rgba(255, 59, 48, 0.1);
-            color: #ff3b30;
-            padding: 10px;
-            border-radius: 8px;
-            font-size: 13px;
-            margin-bottom: 15px;
-            border: 1px solid rgba(255, 59, 48, 0.2);
-        }
-        
-        .autocomplete-container { position: relative; width: 100%; }
-        
-        input, select {
-            width: 100%; padding: 10px; margin-bottom: 12px;
-            border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box;
-            background-color: var(--tg-theme-secondary-bg-color, #fafafa);
-            color: var(--tg-theme-text-color, #222222);
-        }
-        
-        .suggestions-list {
-            position: absolute; top: 42px; left: 0; width: 100%;
-            background-color: var(--tg-theme-bg-color, #ffffff);
-            border: 1px solid #ccc; border-radius: 8px;
-            max-height: 200px; overflow-y: auto; z-index: 999;
-            box-shadow: 0px 4px 10px rgba(0,0,0,0.15); display: none;
-        }
-        .suggestion-item {
-            padding: 10px; cursor: pointer; font-size: 14px;
-            border-bottom: 1px solid rgba(0,0,0,0.05);
-        }
-        .suggestion-item:hover { background-color: rgba(36, 129, 204, 0.1); }
-
-        .inline-group { display: flex; gap: 10px; }
-        .inline-group div { flex: 1; }
-        
-        .financeiro-group { display: flex; gap: 15px; }
-        .financeiro-group .preco-box { flex: 2; }
-        .financeiro-group .margem-box { flex: 1; }
-
-        button {
-            width: 100%; padding: 12px; background-color: var(--tg-theme-button-color, #2481cc);
-            color: var(--tg-theme-button-text-color, #ffffff);
-            border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer;
-        }
-        button:disabled { background-color: #555; cursor: not-allowed; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg-color); color: var(--text-color); margin: 0; padding: 20px; box-sizing: border-box; }
+        h2 { margin-top: 0; font-size: 22px; text-align: center; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; font-size: 14px; }
+        input[type="text"], input[type="number"], input[type="date"], input[type="tel"], select { width: 100%; padding: 12px; border: 1px solid var(--hint-color); border-radius: 8px; box-sizing: border-box; background-color: var(--input-bg); color: var(--text-color); font-size: 16px; }
+        input[type="text"] { text-transform: uppercase; }
+        .row { display: flex; gap: 10px; }
+        .row .form-group { flex: 1; }
+        .checkbox-group { display: flex; align-items: center; gap: 10px; margin-bottom: 15px; padding: 10px; background-color: var(--input-bg); border-radius: 8px; }
+        .checkbox-group input[type="checkbox"] { width: 20px; height: 20px; }
+        .hidden { display: none; }
+        button.submit-btn { width: 100%; padding: 15px; background-color: var(--button-color); color: var(--button-text); border: none; border-radius: 8px; font-size: 18px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .section-title { margin-top: 25px; margin-bottom: 10px; font-size: 16px; border-bottom: 1px solid var(--hint-color); padding-bottom: 5px; color: var(--button-color); }
     </style>
 </head>
 <body>
 
-    <form id="painelForm">
-        <div class="section">
-            <label>Origem (Onde você está?):</label>
-            <div class="autocomplete-container">
-                <input type="text" id="origemInput" placeholder="Digite a cidade de partida... Ex: Manaus" autocomplete="off" required>
-                <div id="origemSuggestions" class="suggestions-list"></div>
-            </div>
+    <h2 id="titulo_form">🎛️ Novo Radar</h2>
 
-            <label>Destino Principal (Para onde quer ir?):</label>
-            <div class="autocomplete-container">
-                <input type="text" id="destinoInput" placeholder="Digite o destino... Ex: São Paulo" autocomplete="off" required>
-                <div id="destinoSuggestions" class="suggestions-list"></div>
-            </div>
+    <form id="radarForm">
+        <div class="section-title">📍 Rota Principal</div>
+        <div class="row">
+            <div class="form-group"><label>Origem (IATA)</label><input type="text" id="origem" maxlength="3" required></div>
+            <div class="form-group"><label>Destino (IATA)</label><input type="text" id="destino" maxlength="3" required></div>
+        </div>
+        <div class="form-group"><label>Data de Partida</label><input type="date" id="data_partida" required></div>
+        <div class="checkbox-group"><input type="checkbox" id="datas_flexiveis"><label style="margin:0;">Ativar Datas Flexíveis</label></div>
+        <div id="div_flex" class="row hidden">
+            <div class="form-group"><label>Dias Antes (-)</label><input type="number" id="dias_antes" min="0" max="7" value="0"></div>
+            <div class="form-group"><label>Dias Depois (+)</label><input type="number" id="dias_depois" min="0" max="7" value="0"></div>
+        </div>
 
-            <label>Destino Alternativo (Opcional):</label>
-            <div class="autocomplete-container">
-                <input type="text" id="alternativoInput" placeholder="Ex: Rio de Janeiro" autocomplete="off">
-                <div id="alternativoSuggestions" class="suggestions-list"></div>
-            </div>
+        <div class="section-title">💵 Alvo e Limites</div>
+        <div class="row">
+            <div class="form-group"><label>Preço Máximo (R$)</label><input type="number" id="preco_alvo" step="0.01" required></div>
+            <div class="form-group"><label>Margem (%)</label><input type="number" id="margem" min="0" value="0"></div>
+        </div>
 
-            <div class="inline-group">
-                <div>
-                    <label>Paradas Máximas:</label>
-                    <input type="number" id="maxParadas" value="2" min="0">
-                </div>
-                <div>
-                    <label>Skiplagging na Alternativa?</label>
-                    <select id="skipAlternativa">
-                        <option value="sim">Sim</option>
-                        <option value="nao">Não</option>
-                    </select>
+        <div class="section-title">💥 Estratégia Oculta (Skiplagging)</div>
+        <div class="row">
+            <div class="form-group">
+                <label>Aplicar na Principal?</label>
+                <select id="skip_principal"><option value="nao">Não</option><option value="sim">Sim</option></select>
+            </div>
+            <div class="form-group" id="div_paradas_principal" class="hidden">
+                <label>Máx Paradas</label><input type="number" id="paradas_principal" min="0" value="1">
+            </div>
+        </div>
+
+        <div class="section-title">🚌 Rota Alternativa (Opcional)</div>
+        <div class="form-group"><label>Aeroporto Alternativo (IATA)</label><input type="text" id="alternativo" maxlength="3"></div>
+        
+        <div id="div_alternativo" class="hidden">
+            <div class="row">
+                <div class="form-group"><label>Máx Paradas Alt.</label><input type="number" id="max_paradas" min="0" value="0"></div>
+                <div class="form-group">
+                    <label>Skip na Alternativa?</label>
+                    <select id="skip_alternativa"><option value="nao">Não</option><option value="sim">Sim</option></select>
                 </div>
             </div>
         </div>
 
-        <div class="section">
-            <label>Data de Partida:</label>
-            <input type="date" id="dataPartida" required>
-
-            <div class="inline-group">
-                <div>
-                    <label>Hora Mínima:</label>
-                    <input type="time" id="horaMin" value="00:00">
-                </div>
-                <div>
-                    <label>Hora Máxima:</label>
-                    <input type="time" id="horaMax" value="23:59">
-                </div>
-            </div>
-        </div>
-
-        <div class="section">
-            <div class="financeiro-group">
-                <div class="preco-box">
-                    <label>Preço Alvo (R$):</label>
-                    <input type="number" id="precoAlvo" value="700" required>
-                </div>
-                <div class="margem-box">
-                    <label>Margem (%):</label>
-                    <input type="number" id="margem" value="30" required>
-                </div>
-            </div>
-        </div>
-
-        <div class="section">
-            <div class="aviso-urgente">
-                🚨 <b>AVISO CRÍTICO:</b> Ofertas encontradas na madrugada expiram em minutos. Compre IMEDIATAMENTE!
-            </div>
-            
-            <label>Como deseja ser despertado na madrugada?</label>
-            <select id="tipoAlertaMadrugada" onchange="controlarCampoTelefone()">
-                <option value="telegram">💬 Apenas mensagem de texto no Telegram</option>
-                <option value="ligacao">📞 Ligação Telefônica Real (Robô te liga)</option>
-                <option value="pushover">📢 Alerta de Sirene via aplicativo Pushover (Fura o bloqueio 'Não Perturbe' do celular)</option>
+        <div class="section-title">🚨 Despertador de Madrugada</div>
+        <div class="form-group">
+            <label>Como deseja ser avisado?</label>
+            <select id="alerta_madrugada">
+                <option value="telegram">💬 Apenas mensagem no Telegram</option>
+                <option value="ligacao">📞 Ligação Telefônica do Robô (Twilio)</option>
             </select>
-
-            <div id="blocoTelefone" style="display: none;">
-                <label>Celular com DDD (Somente números):</label>
-                <input type="tel" id="telefoneUsuario" placeholder="Ex: 92996097593">
-            </div>
+        </div>
+        <div class="form-group hidden" id="div_telefone">
+            <label>Celular com DDD (Somente números)</label>
+            <input type="tel" id="telefone" placeholder="Ex: 11999999999">
         </div>
 
-        <button type="submit" id="btnSubmeter">Salvar Configurações do Radar</button>
+        <button type="submit" class="submit-btn" id="btnSalvar">💾 Salvar Radar no Motor</button>
     </form>
 
     <script>
         const tg = window.Telegram.WebApp;
         tg.expand();
+        window.radarEmEdicao = null; 
+        const chat_id = tg.initDataUnsafe?.user?.id ? tg.initDataUnsafe.user.id.toString() : "123456789";
 
-        const chat_id = tg.initDataUnsafe?.user?.id || "TESTE_LOCAL";
-
-        const BANCO_AEROPORTOS = [
-            { nome: "São Paulo - TODOS OS AEROPORTOS (SAO)", iata: "SAO" },
-            { nome: "São Paulo - Guarulhos (GRU)", iata: "GRU" },
-            { nome: "São Paulo - Congonhas (CGH)", iata: "CGH" },
-            { nome: "São Paulo - Campinas (VCP)", iata: "VCP" },
-            { nome: "Rio de Janeiro - TODOS OS AEROPORTOS (RIO)", iata: "RIO" },
-            { nome: "Rio de Janeiro - Galeão (GIG)", iata: "GIG" },
-            { nome: "Rio de Janeiro - Santos Dumont (SDU)", iata: "SDU" },
-            { nome: "Manaus - Eduardo Gomes (MAO)", iata: "MAO" },
-            { nome: "Brasília - Presidente Juscelino Kubitschek (BSB)", iata: "BSB" },
-            { nome: "Belo Horizonte - Confins (CNF)", iata: "CNF" },
-            { nome: "Belo Horizonte - Pampulha (PLU)", iata: "PLU" },
-            { nome: "Salvador - Dep. Luís Eduardo Magalhães (SSA)", iata: "SSA" },
-            { nome: "Recife - Guararapes (REC)", iata: "REC" },
-            { nome: "Fortaleza - Pinto Martins (FOR)", iata: "FOR" },
-            { nome: "Curitiba - Afonso Pena (CWB)", iata: "CWB" },
-            { nome: "Porto Alegre - Salgado Filho (POA)", iata: "POA" },
-            { nome: "Florianópolis - Hercílio Luz (FLN)", iata: "FLN" },
-            { nome: "Belém - Val-de-Cans (BEL)", iata: "BEL" },
-            { nome: "Goiânia - Santa Genoveva (GYN)", iata: "GYN" },
-            { nome: "Cuiabá - Marechal Rondon (CGB)", iata: "CGB" },
-            { nome: "Vitória - Eurico de Aguiar Salles (VIX)", iata: "VIX" },
-            { nome: "Natal - Aluízio Alves (NAT)", iata: "NAT" },
-            { nome: "Maceió - Zumbi dos Palmares (MCZ)", iata: "MCZ" },
-            { nome: "João Pessoa - Castro Pinto (JPA)", iata: "JPA" },
-            { nome: "Aracaju - Santa Maria (AJU)", iata: "AJU" },
-            { nome: "São Luís - Marechal Cunha Machado (SLZ)", iata: "SLZ" },
-            { nome: "Teresina - Senador Petrônio Portella (THE)", iata: "THE" },
-            { nome: "Campo Grande (CGR)", iata: "CGR" },
-            { nome: "Porto Velho - Governador Jorge Teixeira (PVH)", iata: "PVH" },
-            { nome: "Macapá - Alberto Alcolumbre (MCP)", iata: "MCP" },
-            { nome: "Rio Branco - Plácido de Castro (RBR)", iata: "RBR" },
-            { nome: "Boa Vista - Atlas Brasil Cantanhede (BVB)", iata: "BVB" },
-            { nome: "Palmas - Brigadeiro Lysias Rodrigues (PMW)", iata: "PMW" },
-            { nome: "Navegantes - Ministro Victor Konder (NVT)", iata: "NVT" },
-            { nome: "Foz do Iguaçu - Cataratas (IGU)", iata: "IGU" }
-        ];
-
-        const codigosSelecionados = { origem: "", destino: "", alternativo: "" };
-
-        function vincularAutocomplete(inputId, suggestionsId, chaveDicionario) {
-            const input = document.getElementById(inputId);
-            const box = document.getElementById(suggestionsId);
-
-            input.addEventListener("input", function() {
-                const termo = this.value.toLowerCase().trim();
-                box.innerHTML = "";
-                
-                if (!termo) {
-                    box.style.display = "none";
-                    codigosSelecionados[chaveDicionario] = "";
-                    return;
-                }
-
-                const filtrados = BANCO_AEROPORTOS.filter(a => 
-                    a.nome.toLowerCase().includes(termo) || a.iata.toLowerCase().includes(termo)
-                );
-
-                if (filtrados.length > 0) {
-                    box.style.display = "block";
-                    filtrados.forEach(item => {
-                        const div = document.createElement("div");
-                        div.className = "suggestion-item";
-                        div.innerText = item.nome;
-                        
-                        div.addEventListener("click", function() {
-                            input.value = item.nome;
-                            codigosSelecionados[chaveDicionario] = item.iata;
-                            box.style.display = "none";
-                        });
-                        box.appendChild(div);
-                    });
-                } else {
-                    box.style.display = "none";
-                }
-            });
-
-            document.addEventListener("click", function(e) {
-                if (e.target !== input) box.style.display = "none";
-            });
-        }
-
-        vincularAutocomplete("origemInput", "origemSuggestions", "origem");
-        vincularAutocomplete("destinoInput", "destinoSuggestions", "destino");
-        vincularAutocomplete("alternativoInput", "alternativoSuggestions", "alternativo");
-
-        function controlarCampoTelefone() {
-            const escolha = document.getElementById('tipoAlertaMadrugada').value;
-            const bloco = document.getElementById('blocoTelefone');
-            const inputTelefone = document.getElementById('telefoneUsuario');
-            
-            if (escolha === 'ligacao') {
-                bloco.style.display = 'block';
-                inputTelefone.required = true;
-            } else {
-                bloco.style.display = 'none';
-                inputTelefone.required = false;
-            }
-        }
-
-        document.getElementById('painelForm').addEventListener('submit', function(e) {
-            e.preventDefault();
-
-            if (!codigosSelecionados.origem && document.getElementById("origemInput").value.length === 3) {
-                codigosSelecionados.origem = document.getElementById("origemInput").value.toUpperCase();
-            }
-            if (!codigosSelecionados.destino && document.getElementById("destinoInput").value.length === 3) {
-                codigosSelecionados.destino = document.getElementById("destinoInput").value.toUpperCase();
-            }
-
-            if (!codigosSelecionados.origem || !codigosSelecionados.destino) {
-                alert("Por favor, selecione uma cidade válida na lista de sugestões!");
-                return;
-            }
-
-            // AGORA SIM: Enviando a ficha completa de configuracoes do radar
-            const dadosConfig = {
-                chat_id: chat_id,
-                origem: codigosSelecionados.origem,
-                destino: codigosSelecionados.destino,
-                alternativo: codigosSelecionados.alternativo || "",
-                maxParadas: parseInt(document.getElementById('maxParadas').value) || 0,
-                skipAlternativa: document.getElementById('skipAlternativa').value,
-                dataPartida: document.getElementById('dataPartida').value,
-                horaMin: document.getElementById('horaMin').value,
-                horaMax: document.getElementById('horaMax').value,
-                precoAlvo: parseFloat(document.getElementById('precoAlvo').value),
-                margem: parseInt(document.getElementById('margem').value) || 0,
-                alertaMadrugada: document.getElementById('tipoAlertaMadrugada').value,
-                telefone: document.getElementById('telefoneUsuario').value || ""
-            };
-
-            const btn = document.getElementById("btnSubmeter");
-            btn.innerText = "⏳ Enviando para o Bot...";
-            btn.disabled = true;
-
-            fetch("https://rastreador-passagens.onrender.com", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(dadosConfig)
-            })
-            .then(response => {
-                if (response.ok) {
-                    alert("✅ Radar configurado com sucesso e salvo no banco de dados!");
-                    tg.close();
-                } else {
-                    alert("❌ O Render recusou os dados. Verifique os logs.");
-                    liberarBotao();
-                }
-            })
-            .catch(error => {
-                console.error("Erro no envio:", error);
-                alert("❌ Falha de rede! O Render está offline ou demorou a responder.");
-                liberarBotao();
-            });
+        document.getElementById('datas_flexiveis').addEventListener('change', function() { document.getElementById('div_flex').classList.toggle('hidden', !this.checked); });
+        document.getElementById('skip_principal').addEventListener('change', function() { document.getElementById('div_paradas_principal').style.display = this.value === 'sim' ? 'block' : 'none'; });
+        document.getElementById('alternativo').addEventListener('input', function() { document.getElementById('div_alternativo').classList.toggle('hidden', this.value.trim().length !== 3); });
+        
+        // Exibe o campo de telefone se escolher ligação
+        document.getElementById('alerta_madrugada').addEventListener('change', function() {
+            document.getElementById('div_telefone').classList.toggle('hidden', this.value !== 'ligacao');
         });
 
-        function liberarBotao() {
-            const btn = document.getElementById("btnSubmeter");
-            btn.innerText = "Salvar Configurações do Radar";
-            btn.disabled = false;
-        }
+        document.addEventListener("DOMContentLoaded", async () => {
+            document.getElementById('skip_principal').dispatchEvent(new Event('change'));
+            const editId = new URLSearchParams(window.location.search).get('edit_id');
+
+            if (editId) {
+                window.radarEmEdicao = editId;
+                document.getElementById("titulo_form").innerText = "✏️ Editar Radar #" + editId;
+                document.getElementById("btnSalvar").innerText = "🔄 Atualizar Radar";
+                
+                try {
+                    const res = await fetch(`/api/radar/${editId}`);
+                    const dados = await res.json();
+
+                    document.getElementById('origem').value = dados.origem || '';
+                    document.getElementById('destino').value = dados.destino || '';
+                    document.getElementById('data_partida').value = dados.data_partida || '';
+                    document.getElementById('preco_alvo').value = dados.preco_alvo || '';
+                    document.getElementById('margem').value = dados.margem || 0;
+                    document.getElementById('skip_principal').value = dados.skip_principal || 'nao';
+                    document.getElementById('paradas_principal').value = dados.paradas_principal || 0;
+                    document.getElementById('alerta_madrugada').value = dados.alerta_madrugada || 'telegram';
+                    document.getElementById('telefone').value = dados.telefone || '';
+                    
+                    if (dados.alternativo) {
+                        document.getElementById('alternativo').value = dados.alternativo;
+                        document.getElementById('max_paradas').value = dados.max_paradas || 0;
+                        document.getElementById('skip_alternativa').value = dados.skip_alternativa || 'nao';
+                    }
+
+                    if (dados.datas_flexiveis) {
+                        document.getElementById('datas_flexiveis').checked = true;
+                        document.getElementById('dias_antes').value = dados.dias_antes || 0;
+                        document.getElementById('dias_depois').value = dados.dias_depois || 0;
+                    }
+
+                    document.getElementById('datas_flexiveis').dispatchEvent(new Event('change'));
+                    document.getElementById('skip_principal').dispatchEvent(new Event('change'));
+                    document.getElementById('alternativo').dispatchEvent(new Event('input'));
+                    document.getElementById('alerta_madrugada').dispatchEvent(new Event('change'));
+
+                } catch (erro) { tg.showAlert("Erro ao carregar dados."); }
+            }
+        });
+
+        document.getElementById('radarForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btnSalvar');
+            btn.innerText = "Processando...";
+            btn.disabled = true;
+
+            const payload = {
+                id: window.radarEmEdicao,
+                chat_id: chat_id,
+                origem: document.getElementById('origem').value.toUpperCase(),
+                destino: document.getElementById('destino').value.toUpperCase(),
+                alternativo: document.getElementById('alternativo').value.toUpperCase(),
+                max_paradas: parseInt(document.getElementById('max_paradas').value) || 0,
+                skip_principal: document.getElementById('skip_principal').value,
+                paradas_principal: parseInt(document.getElementById('paradas_principal').value) || 0,
+                skip_alternativa: document.getElementById('skip_alternativa').value,
+                data_partida: document.getElementById('data_partida').value,
+                datas_flexiveis: document.getElementById('datas_flexiveis').checked,
+                dias_antes: parseInt(document.getElementById('dias_antes').value) || 0,
+                dias_depois: parseInt(document.getElementById('dias_depois').value) || 0,
+                preco_alvo: parseFloat(document.getElementById('preco_alvo').value),
+                margem: parseFloat(document.getElementById('margem').value) || 0,
+                alerta_madrugada: document.getElementById('alerta_madrugada').value,
+                telefone: document.getElementById('telefone').value
+            };
+
+            try {
+                const res = await fetch('/api/salvar', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload) });
+                if (res.ok) {
+                    tg.showAlert("Radar configurado com sucesso!", () => tg.close());
+                } else {
+                    tg.showAlert("Erro ao salvar dados.");
+                    btn.innerText = "Tentar Novamente";
+                    btn.disabled = false;
+                }
+            } catch (error) {
+                tg.showAlert("Erro de conexão com o motor.");
+                btn.innerText = "Tentar Novamente";
+                btn.disabled = false;
+            }
+        });
     </script>
 </body>
 </html>
