@@ -50,12 +50,13 @@ def listar_radares(message):
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
+        # Adicionamos a coluna 'margem' na busca do Neon
         cursor.execute("""
             SELECT id, origem, destino, alternativo, 
                    skip_principal, paradas_principal, 
                    skip_alternativa, max_paradas, 
                    datas_flexiveis, dias_antes, dias_depois,
-                   preco_alvo, data_partida 
+                   preco_alvo, margem, data_partida 
             FROM radares 
             WHERE chat_id = %s ORDER BY id DESC
         """, (chat_id,))
@@ -73,22 +74,35 @@ def listar_radares(message):
     bot.send_message(message.chat.id, f"📋 *Possuis {len(linhas)} radar(es) ativos:*", parse_mode="Markdown")
     url_base = TUNNEL_URL if TUNNEL_URL.endswith("/") else f"{TUNNEL_URL}/"
     
-    for r_id, origem, destino, alternativo, skip_p, paradas_p, skip_a, max_p, flex_ok, d_antes, d_depois, preco_alvo, data_partida in linhas:
+    for r_id, origem, destino, alternativo, skip_p, paradas_p, skip_a, max_p, flex_ok, d_antes, d_depois, preco_alvo, margem, data_partida in linhas:
         markup = InlineKeyboardMarkup()
         url_edit = f"{url_base}?edit_id={r_id}&v={int(time.time())}"
         botao_editar = InlineKeyboardButton(text="✏️ Editar", web_app=telebot.types.WebAppInfo(url=url_edit))
         botao_excluir = InlineKeyboardButton(text="🗑️ Excluir", callback_data=f"del_{r_id}")
         markup.row(botao_editar, botao_excluir)
         
+        # 🧮 Cálculo automático da Tolerância Máxima
+        teto_maximo = float(preco_alvo) * (1 + (float(margem) / 100))
+        
+        # 🎨 Montagem do Report Bonito
         card = (f"📍 *Radar #{r_id}*\n"
                 f"🛫 *Origem:* {origem}   *Destino:* {destino}\n"
                 f"   ┗ 💥 *Skip:* {'Sim' if skip_p == 'sim' else 'Não'} | *Paradas:* {paradas_p}\n")
+        
         if alternativo and alternativo.strip():
             card += f"   ┗ 🚌 *Alt:* {alternativo} (Skip: {'Sim' if skip_a == 'sim' else 'Não'})\n"
-        card += f"📅 *Data:* {data_partida}\n"
-        card += f"💵 *Alvo:* R$ {preco_alvo:.2f}\n"
+            
+        # Adicionando a string de dias flexíveis
+        if flex_ok:
+            card += f"📅 *Data:* {data_partida} _({d_antes}d antes, {d_depois}d depois)_\n"
+        else:
+            card += f"📅 *Data:* {data_partida} _(Data Exata)_\n"
+            
+        # Adicionando o Alvo com a Tolerância
+        card += f"💵 *Alvo:* R$ {preco_alvo:.2f} _(Tolerância: R$ {teto_maximo:.2f})_\n"
+        
         bot.send_message(message.chat.id, card, reply_markup=markup, parse_mode="Markdown")
-
+        
 @bot.callback_query_handler(func=lambda call: call.data.startswith('del_'))
 def deletar_radar_callback(call):
     radar_id = int(call.data.split('_')[1])
