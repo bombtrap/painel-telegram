@@ -2,70 +2,147 @@
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Painel do Rastreador</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Buscador de Passagens</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: var(--tg-theme-bg-color, #ffffff); color: var(--tg-theme-text-color, #222222); margin: 0; padding: 15px; }
-        .section { margin-bottom: 20px; padding: 10px; border-bottom: 1px solid rgba(0,0,0,0.1); }
-        label { display: block; font-weight: bold; margin-bottom: 5px; font-size: 14px; }
-        input, select { width: 100%; padding: 10px; margin-bottom: 10px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; }
-        button { width: 100%; padding: 12px; background-color: var(--tg-theme-button-color, #2481cc); color: var(--tg-theme-button-text-color, #ffffff); border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; }
-        
-        /* 🛠️ CSS do Autocomplete Restaurado */
-        .autocomplete-container { position: relative; width: 100%; }
-        .suggestions-list { 
-            position: absolute; top: 65px; left: 0; width: 100%; 
-            background-color: var(--tg-theme-bg-color, #ffffff); 
-            border: 1px solid #ccc; border-radius: 8px; 
-            max-height: 200px; overflow-y: auto; z-index: 9999; 
-            box-shadow: 0px 8px 16px rgba(0,0,0,0.2); display: none; 
+        :root {
+            --bg: var(--tg-theme-bg-color, #1a1a1a);
+            --text: var(--tg-theme-text-color, #ffffff);
+            --hint: var(--tg-theme-hint-color, #999999);
+            --btn: var(--tg-theme-button-color, #2481cc);
+            --btn-text: var(--tg-theme-button-text-color, #ffffff);
+            --input-bg: var(--tg-theme-secondary-bg-color, #2a2a2a);
         }
-        .suggestion-item { padding: 12px; cursor: pointer; font-size: 14px; border-bottom: 1px solid rgba(0,0,0,0.05); }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: var(--bg); color: var(--text); margin: 0; padding: 15px; }
+        
+        .form-group { margin-bottom: 18px; }
+        label { display: block; margin-bottom: 6px; font-weight: bold; font-size: 14px; }
+        input[type="text"], input[type="number"], input[type="date"], input[type="tel"], select { 
+            width: 100%; padding: 12px; border: 1px solid #444; border-radius: 8px; 
+            background-color: var(--input-bg); color: var(--text); font-size: 14px; box-sizing: border-box;
+        }
+        
+        .row { display: flex; gap: 10px; align-items: center; }
+        .row .form-group { flex: 1; margin-bottom: 0; }
+        
+        hr { border: 0; border-top: 1px solid #444; margin: 20px 0; }
+        
+        /* Checkboxes e Toggles */
+        .checkbox-row { display: flex; align-items: center; gap: 8px; margin-top: 5px; font-size: 14px; font-weight: bold; }
+        .checkbox-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--btn); }
+        
+        /* Mini inputs para paradas e dias */
+        .mini-input { width: 60px !important; padding: 8px !important; text-align: center; }
+        .flex-text { font-size: 13px; color: var(--hint); }
+
+        button.submit-btn { width: 100%; padding: 15px; background-color: var(--btn); color: var(--btn-text); border: none; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        
+        /* Autocomplete */
+        .autocomplete-container { position: relative; width: 100%; }
+        .suggestions-list { position: absolute; top: 45px; left: 0; width: 100%; background-color: var(--input-bg); border: 1px solid #444; border-radius: 8px; max-height: 200px; overflow-y: auto; z-index: 9999; box-shadow: 0px 8px 16px rgba(0,0,0,0.5); display: none; }
+        .suggestion-item { padding: 12px; cursor: pointer; font-size: 13px; border-bottom: 1px solid #333; color: var(--text); }
         .suggestion-item:last-child { border-bottom: none; }
-        .suggestion-item:hover { background-color: var(--tg-theme-button-color, #2481cc); color: #ffffff; }
+        .suggestion-item:hover { background-color: var(--btn); color: var(--btn-text); }
     </style>
 </head>
 <body>
 
-    <div class="section">
-        <label>Origem (Onde você está?)</label>
-        <div class="autocomplete-container">
-            <input type="text" id="origemInput" placeholder="Ex: Manaus ou MAO" autocomplete="off">
-            <div id="origemSuggestions" class="suggestions-list"></div>
-        </div>
-        
-        <label>Destino (Para onde quer ir?)</label>
-        <div class="autocomplete-container">
-            <input type="text" id="destinoInput" placeholder="Ex: São Paulo ou SAO" autocomplete="off">
-            <div id="destinoSuggestions" class="suggestions-list"></div>
+    <form id="radarForm">
+        <div class="form-group">
+            <label>Origem:</label>
+            <div class="autocomplete-container">
+                <input type="text" id="origemInput" placeholder="Ex: Manaus ou MAO" autocomplete="off" required>
+                <div id="origemSuggestions" class="suggestions-list"></div>
+            </div>
         </div>
 
-        <label>Data da Viagem</label>
-        <input type="date" id="dataPartida">
+        <div class="form-group">
+            <label>Destino:</label>
+            <div class="autocomplete-container">
+                <input type="text" id="destinoInput" placeholder="Ex: São Paulo ou SAO" autocomplete="off" required>
+                <div id="destinoSuggestions" class="suggestions-list"></div>
+            </div>
+            
+            <div class="checkbox-row" style="margin-top: 10px;">
+                <input type="checkbox" id="skip_principal"> Skiplagging
+                <span id="div_paradas" style="display:none; margin-left: 10px; align-items: center; gap: 5px;">
+                    <input type="number" id="paradas_principal" class="mini-input" value="1" min="1"> <span class="flex-text">paradas</span>
+                </span>
+            </div>
+        </div>
 
-        <label>Preço Alvo (R$)</label>
-        <input type="number" id="precoAlvo" placeholder="0.00">
+        <hr>
 
-        <label>Margem de Aceite (%)</label>
-        <input type="number" id="margem" value="10">
+        <div class="form-group">
+            <label>Destino Alternativo:</label>
+            <div class="autocomplete-container">
+                <input type="text" id="alternativoInput" placeholder="Ex: Rio de Janeiro (Opcional)" autocomplete="off">
+                <div id="alternativoSuggestions" class="suggestions-list"></div>
+            </div>
+        </div>
 
-        <label>Alerta de Madrugada</label>
-        <select id="tipoAlertaMadrugada">
-            <option value="telegram">Apenas Telegram</option>
-            <option value="ligacao">Telegram + Ligação</option>
-        </select>
+        <hr>
 
-        <label>Telefone (se escolheu ligação)</label>
-        <input type="text" id="telefoneUsuario" placeholder="+5592999999999">
-    </div>
+        <div class="form-group">
+            <label>Data da Viagem:</label>
+            <input type="date" id="data_partida" required>
+            
+            <div class="checkbox-row" style="margin-top: 10px;">
+                <input type="checkbox" id="datas_flexiveis"> DATAS FLEXÍVEIS
+            </div>
+            <div id="div_flex" style="display:none; align-items: center; gap: 8px; margin-top: 8px;">
+                <input type="number" id="dias_antes" class="mini-input" value="0" min="0"> <span class="flex-text">dias antes ou</span>
+                <input type="number" id="dias_depois" class="mini-input" value="0" min="0"> <span class="flex-text">dias depois</span>
+            </div>
+        </div>
 
-    <button id="btnSubmeter">Salvar Configurações do Radar</button>
+        <hr>
+
+        <div class="row">
+            <div class="form-group">
+                <label>Preço Alvo (R$):</label>
+                <input type="number" id="preco_alvo" placeholder="0.00" required>
+            </div>
+            <div class="form-group">
+                <label>Margem de Aceite (%):</label>
+                <input type="number" id="margem" value="10" required>
+            </div>
+        </div>
+
+        <hr>
+
+        <div class="form-group">
+            <label>Alerta de Madrugada:</label>
+            <select id="alerta_madrugada">
+                <option value="telegram">Apenas Telegram</option>
+                <option value="ligacao">Ligação Telefônica</option>
+            </select>
+        </div>
+        <div class="form-group" id="div_telefone" style="display:none;">
+            <label>Telefone:</label>
+            <input type="tel" id="telefone" placeholder="+55 99 9999-9999">
+        </div>
+
+        <button type="submit" class="submit-btn" id="btnSalvar">Salvar Configurações do Radar</button>
+    </form>
 
     <script>
-        let tg = window.Telegram.WebApp;
+        const tg = window.Telegram.WebApp;
         tg.expand();
 
+        // Lógicas de Exibir/Ocultar (Skiplagging, Datas Flexíveis, Telefone)
+        document.getElementById('skip_principal').addEventListener('change', function() {
+            document.getElementById('div_paradas').style.display = this.checked ? 'flex' : 'none';
+        });
+        document.getElementById('datas_flexiveis').addEventListener('change', function() {
+            document.getElementById('div_flex').style.display = this.checked ? 'flex' : 'none';
+        });
+        document.getElementById('alerta_madrugada').addEventListener('change', function() {
+            document.getElementById('div_telefone').style.display = this.value === 'ligacao' ? 'block' : 'none';
+        });
+
+        // Banco de Aeroportos (Autocomplete)
         const BANCO_AEROPORTOS = [
             { nome: "São Paulo - TODOS OS AEROPORTOS (SAO)", iata: "SAO" },
             { nome: "São Paulo - Guarulhos (GRU)", iata: "GRU" },
@@ -77,54 +154,25 @@
             { nome: "Manaus - Eduardo Gomes (MAO)", iata: "MAO" },
             { nome: "Brasília - Presidente Juscelino Kubitschek (BSB)", iata: "BSB" },
             { nome: "Belo Horizonte - Confins (CNF)", iata: "CNF" },
-            { nome: "Belo Horizonte - Pampulha (PLU)", iata: "PLU" },
             { nome: "Salvador - Dep. Luís Eduardo Magalhães (SSA)", iata: "SSA" },
             { nome: "Recife - Guararapes (REC)", iata: "REC" },
             { nome: "Fortaleza - Pinto Martins (FOR)", iata: "FOR" },
-            { nome: "Curitiba - Afonso Pena (CWB)", iata: "CWB" },
-            { nome: "Porto Alegre - Salgado Filho (POA)", iata: "POA" },
-            { nome: "Florianópolis - Hercílio Luz (FLN)", iata: "FLN" },
-            { nome: "Belém - Val-de-Cans (BEL)", iata: "BEL" },
-            { nome: "Goiânia - Santa Genoveva (GYN)", iata: "GYN" },
-            { nome: "Cuiabá - Marechal Rondon (CGB)", iata: "CGB" },
-            { nome: "Vitória - Eurico de Aguiar Salles (VIX)", iata: "VIX" },
-            { nome: "Natal - Aluízio Alves (NAT)", iata: "NAT" },
-            { nome: "Maceió - Zumbi dos Palmares (MCZ)", iata: "MCZ" },
-            { nome: "João Pessoa - Castro Pinto (JPA)", iata: "JPA" },
-            { nome: "Aracaju - Santa Maria (AJU)", iata: "AJU" },
-            { nome: "São Luís - Marechal Cunha Machado (SLZ)", iata: "SLZ" },
-            { nome: "Teresina - Senador Petrônio Portella (THE)", iata: "THE" },
-            { nome: "Campo Grande (CGR)", iata: "CGR" },
-            { nome: "Porto Velho - Governador Jorge Teixeira (PVH)", iata: "PVH" },
-            { nome: "Macapá - Alberto Alcolumbre (MCP)", iata: "MCP" },
-            { nome: "Rio Branco - Plácido de Castro (RBR)", iata: "RBR" },
-            { nome: "Boa Vista - Atlas Brasil Cantanhede (BVB)", iata: "BVB" },
-            { nome: "Palmas - Brigadeiro Lysias Rodrigues (PMW)", iata: "PMW" },
-            { nome: "Navegantes - Ministro Victor Konder (NVT)", iata: "NVT" },
-            { nome: "Foz do Iguaçu - Cataratas (IGU)", iata: "IGU" }
+            { nome: "Curitiba - Afonso Pena (CWB)", iata: "CWB" }
         ];
 
-        const codigosSelecionados = { origem: "", destino: "" };
+        const codigos = { origem: "", destino: "", alternativo: "" };
 
-        function vincularAutocomplete(inputId, suggestionsId, chave) {
+        function setupAutocomplete(inputId, suggestionsId, chave) {
             const input = document.getElementById(inputId);
             const box = document.getElementById(suggestionsId);
 
             input.addEventListener("input", function() {
                 const termo = this.value.toLowerCase().trim();
                 box.innerHTML = "";
+                if (!termo) { box.style.display = "none"; codigos[chave] = ""; return; }
+
+                let filtrados = BANCO_AEROPORTOS.filter(a => a.nome.toLowerCase().includes(termo) || a.iata.toLowerCase().includes(termo));
                 
-                if (!termo) {
-                    box.style.display = "none";
-                    codigosSelecionados[chave] = "";
-                    return;
-                }
-
-                let filtrados = BANCO_AEROPORTOS.filter(a => 
-                    a.nome.toLowerCase().includes(termo) || a.iata.toLowerCase().includes(termo)
-                );
-
-                // Força o "TODOS OS AEROPORTOS" a ficar no topo
                 filtrados.sort((a, b) => {
                     const aTodos = a.nome.includes("TODOS OS AEROPORTOS");
                     const bTodos = b.nome.includes("TODOS OS AEROPORTOS");
@@ -141,71 +189,62 @@
                         div.innerText = item.nome;
                         div.addEventListener("click", function() {
                             input.value = item.nome;
-                            codigosSelecionados[chave] = item.iata;
+                            codigos[chave] = item.iata;
                             box.style.display = "none";
                         });
                         box.appendChild(div);
                     });
-                } else {
-                    box.style.display = "none";
-                }
+                } else { box.style.display = "none"; }
             });
 
-            document.addEventListener("click", function(e) {
-                if (e.target !== input) box.style.display = "none";
-            });
+            document.addEventListener("click", function(e) { if (e.target !== input) box.style.display = "none"; });
         }
 
-        vincularAutocomplete("origemInput", "origemSuggestions", "origem");
-        vincularAutocomplete("destinoInput", "destinoSuggestions", "destino");
+        setupAutocomplete("origemInput", "origemSuggestions", "origem");
+        setupAutocomplete("destinoInput", "destinoSuggestions", "destino");
+        setupAutocomplete("alternativoInput", "alternativoSuggestions", "alternativo");
 
-        document.getElementById("btnSubmeter").addEventListener("click", function() {
-            // Se o usuário digitou mas esqueceu de clicar na lista, pega os 3 primeiros caracteres
-            let iataOrigem = codigosSelecionados.origem || document.getElementById('origemInput').value.substring(0,3).toUpperCase();
-            let iataDestino = codigosSelecionados.destino || document.getElementById('destinoInput').value.substring(0,3).toUpperCase();
+        // Envio do Formulário
+        document.getElementById('radarForm').addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            let iataO = codigos.origem || document.getElementById('origemInput').value.substring(0,3).toUpperCase();
+            let iataD = codigos.destino || document.getElementById('destinoInput').value.substring(0,3).toUpperCase();
+            let iataA = codigos.alternativo || (document.getElementById('alternativoInput').value ? document.getElementById('alternativoInput').value.substring(0,3).toUpperCase() : "");
 
-            if (!iataOrigem || !iataDestino || iataOrigem.length < 3 || iataDestino.length < 3) {
-                alert("Por favor, selecione os aeroportos na lista!");
-                return;
-            }
+            if (iataO.length < 3 || iataD.length < 3) { alert("Selecione os aeroportos válidos!"); return; }
 
-            const dadosConfig = {
+            const payload = {
                 chat_id: tg.initDataUnsafe?.user?.id || "teste",
-                origem: iataOrigem,
-                destino: iataDestino,
-                data_partida: document.getElementById('dataPartida').value,
-                preco_alvo: parseFloat(document.getElementById('precoAlvo').value) || 0,
+                origem: iataO,
+                destino: iataD,
+                alternativo: iataA,
+                skip_principal: document.getElementById('skip_principal').checked ? "sim" : "nao",
+                paradas_principal: parseInt(document.getElementById('paradas_principal').value) || 0,
+                data_partida: document.getElementById('data_partida').value,
+                datas_flexiveis: document.getElementById('datas_flexiveis').checked,
+                dias_antes: parseInt(document.getElementById('dias_antes').value) || 0,
+                dias_depois: parseInt(document.getElementById('dias_depois').value) || 0,
+                preco_alvo: parseFloat(document.getElementById('preco_alvo').value),
                 margem: parseInt(document.getElementById('margem').value) || 0,
-                alerta_madrugada: document.getElementById('tipoAlertaMadrugada').value,
-                telefone: document.getElementById('telefoneUsuario').value || ""
+                alerta_madrugada: document.getElementById('alerta_madrugada').value,
+                telefone: document.getElementById('telefone').value
             };
 
-            const btn = document.getElementById("btnSubmeter");
-            btn.innerText = "⏳ Enviando...";
-            btn.disabled = true;
+            const btn = document.getElementById("btnSalvar");
+            btn.innerText = "⏳ Enviando..."; btn.disabled = true;
 
             fetch("/api/salvar", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(dadosConfig)
+                body: JSON.stringify(payload)
             })
-            .then(response => response.json())
+            .then(res => res.json())
             .then(data => {
-                if (data.status === "sucesso") {
-                    alert("✅ Radar configurado com sucesso!");
-                    tg.close();
-                } else {
-                    alert("❌ Erro: " + data.erro);
-                    btn.innerText = "Salvar Configurações do Radar";
-                    btn.disabled = false;
-                }
+                if (data.status === "sucesso") { alert("✅ Radar configurado com sucesso!"); tg.close(); } 
+                else { alert("❌ Erro: " + data.erro); btn.innerText = "Salvar Configurações do Radar"; btn.disabled = false; }
             })
-            .catch(error => {
-                console.error("Erro:", error);
-                alert("❌ Falha de conexão com o servidor.");
-                btn.innerText = "Salvar Configurações do Radar";
-                btn.disabled = false;
-            });
+            .catch(error => { alert("❌ Falha de conexão!"); btn.innerText = "Salvar Configurações do Radar"; btn.disabled = false; });
         });
     </script>
 </body>
