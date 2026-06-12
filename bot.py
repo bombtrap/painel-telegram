@@ -6,7 +6,7 @@ from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
 DATABASE_URL = os.getenv("DATABASE_URL")
-TUNNEL_URL = os.getenv("RENDER_EXTERNAL_URL", "http://localhost:8080")
+TUNNEL_URL = "https://rastreador-passagens.onrender.com"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
