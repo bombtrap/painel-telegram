@@ -14,12 +14,9 @@ def inicializar_banco():
         conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
         
-        # ATENÇÃO: Isso limpa a tabela bugada antiga para podermos construir a correta
-        cursor.execute("DROP TABLE IF EXISTS radares CASCADE;")
-        
-        # Criação da tabela avançada com TODAS as colunas que o bot precisa
+        # AQUI FOI REMOVIDO O 'DROP TABLE'. AGORA É 100% PERSISTENTE!
         cursor.execute("""
-            CREATE TABLE radares (
+            CREATE TABLE IF NOT EXISTS radares (
                 id SERIAL PRIMARY KEY,
                 chat_id VARCHAR(50),
                 origem VARCHAR(10),
@@ -42,7 +39,7 @@ def inicializar_banco():
         conn.commit()
         cursor.close()
         conn.close()
-        print("✅ Base de dados reestruturada para a versão avançada!")
+        print("✅ Base de dados verificada e blindada (Persistência Ativa)!")
     except Exception as e:
         print(f"❌ Erro no banco: {e}")
 
