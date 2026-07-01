@@ -4,6 +4,10 @@ import psycopg2
 import requests
 from datetime import datetime, timedelta
 from twilio.rest import Client
+from dotenv import load_dotenv
+
+# Carrega o arquivo .env (Cofre Local)
+load_dotenv()
 
 RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
@@ -20,17 +24,17 @@ def disparar_ligacao_twilio(telefone_usuario):
         
         mensagem_twiml = '<Response><Say language="pt-BR" voice="alice">Atenção! Radar de passagens disparado! Verifique o seu Telegram imediatamente, o preço alvo foi atingido!</Say></Response>'
         client.calls.create(twiml=mensagem_twiml, to=destino, from_=TWILIO_NUMERO)
-        print(f"📞 [Twilio] Ligação efetuada para {destino}")
+        print(f"   📞 [Twilio] Ligação efetuada com sucesso para {destino}")
     except Exception as e:
-        print(f"❌ Erro Twilio: {e}")
+        print(f"   ❌ Erro Twilio: {e}")
 
 def enviar_alerta_telegram(chat_id, mensagem):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     try:
         requests.post(url, json={"chat_id": chat_id, "text": mensagem, "parse_mode": "Markdown", "disable_web_page_preview": True})
-        print(f"🔔 [Telegram] Alerta disparado para {chat_id}!")
+        print(f"   🔔 [Telegram] Mensagem entregue ao utilizador com sucesso!")
     except Exception as e:
-        print(f"Erro Telegram: {e}")
+        print(f"   ❌ Erro Telegram: {e}")
 
 def limpar_preco(preco_bruto):
     try:
@@ -65,17 +69,25 @@ def executar_varredura():
         cursor.execute("SELECT chat_id, origem, destino, alternativo, max_paradas, skip_principal, paradas_principal, skip_alternativa, data_partida, datas_flexiveis, dias_antes, dias_depois, preco_alvo, margem, alerta_madrugada, telefone, id FROM radares")
         radares = cursor.fetchall()
     except Exception as e:
-        print(f"Erro no Neon: {e}")
+        print(f"❌ Erro de ligação ao Neon: {e}")
         return 0
 
     ISCAS_AUTOMATICAS = ["GIG", "SDU", "CNF", "BSB", "SSA", "FOR"]
     
+    print(f"\n========================================================")
+    print(f"🚀 [{datetime.now().strftime('%H:%M:%S')}] A iniciar varredura em {len(radares)} radar(es) ativo(s)...")
+    print(f"========================================================")
+    
     for chat_id, origem, destino, alternativo, max_paradas, skip_principal, paradas_principal, skip_alternativa, data_partida, datas_flexiveis, dias_antes, dias_depois, preco_alvo, margem, alerta_madrugada, telefone, radar_id in radares:
-        teto_maximo = preco_alvo * (1 + (margem / 100))
+        teto_maximo = float(preco_alvo) * (1 + (float(margem) / 100))
+        preco_alvo_float = float(preco_alvo)
         data_base_obj = datetime.strptime(data_partida, "%Y-%m-%d")
         datas_para_pesquisar = []
         
+        print(f"\n📡 [RADAR #{radar_id}] Rota: {origem} ➡️ {destino} | Alvo Tolerância: R$ {teto_maximo:.2f}")
+
         if datas_flexiveis:
+            print(f"   🔄 Flexibilidade Ativa: Analisando do dia -{dias_antes} até +{dias_depois}")
             for i in range(-dias_antes, dias_depois + 1):
                 datas_para_pesquisar.append(data_base_obj + timedelta(days=i))
         else:
@@ -89,11 +101,17 @@ def executar_varredura():
             data_url = data_alvo_obj.strftime("%y%m%d")
             texto_flex = formatar_info_flexibilidade(data_alvo_obj, data_base_obj)
 
+            print(f"\n   📅 Testando data: {data_str} ({texto_flex})")
+
             # Principal
             tokens_gastos_no_ciclo += 1
+            print("      ✈️ Procurando voos regulares na malha aérea...")
             voos_principais = consultar_skyscanner(origem, destino, data_str)
             if voos_principais:
                 voos_principais.sort(key=lambda x: limpar_preco(x.get("price_raw")) or 999999)
+                menor_preco = limpar_preco(voos_principais[0].get("price_raw"))
+                print(f"      ✅ {len(voos_principais)} voos encontrados. Melhor preço base: R$ {menor_preco}")
+                
                 for voo in voos_principais:
                     preco_reg = limpar_preco(voo.get("price_raw"))
                     if not preco_reg or (paradas_principal == 0 and "direct" not in voo.get("tags", [])): continue
@@ -101,11 +119,15 @@ def executar_varredura():
                         melhor_preco_absoluto = preco_reg
                         dest_url = "gru" if destino == "SAO" else destino.lower()
                         link = f"https://www.skyscanner.com.br/transporte/voos/{origem.lower()}/{dest_url}/{data_url}/?adults=1&cabinclass=economy&locale=pt-BR&market=BR&currency=BRL"
-                        mensagem_campea = f"🏆 *MELHOR OFERTA ENCONTRADA (Voo Regular)!*\n\n✈️ *Rota:* {origem} ➡️ {destino}\n📅 *Data:* {data_str}\n💵 *Preço Real:* R$ {preco_reg:.2f}\n🔄 _{texto_flex}_\n\n🔗 *[🛒 COMPRAR NO SKYSCANNER]({link})*"
+                        mensagem_campea = f"🏆 *MELHOR OFERTA ENCONTRADA (Voo Regular)!*\n\n✈️ *Rota:* {origem} ➡️ {destino}\n📅 *Data:* {data_str}\n🔄 _{texto_flex}_\n🎯 *Alvo:* R$ {preco_alvo_float:.2f} / *Margem:* R$ {teto_maximo:.2f}\n💵 *Preço Real:* R$ {preco_reg:.2f}\n\n🔗 *[🛒 COMPRAR NO SKYSCANNER]({link})*"
+                        print(f"      🎯 BINGO! Oferta atingiu o alvo: R$ {preco_reg}!")
                     break 
+            else:
+                print("      ❌ Nenhum voo regular disponível para esta data.")
 
             # Skiplagging Principal
             if skip_principal == "sim" and paradas_principal >= 1:
+                print("      🕵️ Explorando rotas ocultas (Skiplagging)...")
                 destinos_teste = [iscal for iscal in ISCAS_AUTOMATICAS if iscal != destino and iscal != origem]
                 for isca in destinos_teste:
                     tokens_gastos_no_ciclo += 1
@@ -119,12 +141,14 @@ def executar_varredura():
                             if preco_i < melhor_preco_absoluto:
                                 melhor_preco_absoluto = preco_i
                                 link = f"https://www.skyscanner.com.br/transporte/voos/{origem.lower()}/{isca.lower()}/{data_url}/?adults=1&cabinclass=economy&locale=pt-BR&market=BR&currency=BRL"
-                                mensagem_campea = f"🏆🔥 *MELHOR OFERTA - PASSAGEM OCULTA (SKIPLAGGING)!*\n\n✈️ *Voo:* {origem} ➡️ {isca} (Abandone em {destino})\n📅 *Data:* {data_str}\n💵 *Preço Real:* R$ {preco_i:.2f}\n🔄 _{texto_flex}_\n\n🔗 *[🛒 COMPRAR NO SKYSCANNER]({link})*\n⚠️ Leve apenas bagagem de mão!"
+                                mensagem_campea = f"🏆🔥 *MELHOR OFERTA - PASSAGEM OCULTA (SKIPLAGGING)!*\n\n✈️ *Voo:* {origem} ➡️ {isca} (Abandone em {destino})\n📅 *Data:* {data_str}\n🔄 _{texto_flex}_\n🎯 *Alvo:* R$ {preco_alvo_float:.2f} / *Margem:* R$ {teto_maximo:.2f}\n💵 *Preço Real:* R$ {preco_i:.2f}\n\n🔗 *[🛒 COMPRAR NO SKYSCANNER]({link})*\n⚠️ Leve apenas bagagem de mão!"
+                                print(f"      🎯 BINGO (SKIP)! Voo até {isca} abandonando em {destino} por R$ {preco_i}!")
                             break 
                     if melhor_preco_absoluto <= preco_i: break 
 
             # Alternativo
             if alternativo:
+                print(f"      🚌 Avaliando rota alternativa via {alternativo}...")
                 tokens_gastos_no_ciclo += 1
                 voos_alternativos = consultar_skyscanner(origem, alternativo, data_str)
                 if voos_alternativos:
@@ -138,20 +162,26 @@ def executar_varredura():
                             melhor_preco_absoluto = preco_alt
                             link = f"https://www.skyscanner.com.br/transporte/voos/{origem.lower()}/{alternativo.lower()}/{data_url}/?adults=1&cabinclass=economy&locale=pt-BR&market=BR&currency=BRL"
                             if skip_alternativa == "sim" and contem_destino and max_paradas >= 1:
-                                mensagem_campea = f"🏆🔥 *MELHOR OFERTA - SKIP NA ALTERNATIVA!*\n\n✈️ *Voo:* {origem} ➡️ {alternativo} (Desça em {destino})\n📅 *Data:* {data_str}\n💵 *Preço:* R$ {preco_alt:.2f}\n🔄 _{texto_flex}_\n\n🔗 *[🛒 COMPRAR NO SKYSCANNER]({link})*"
+                                mensagem_campea = f"🏆🔥 *MELHOR OFERTA - SKIP NA ALTERNATIVA!*\n\n✈️ *Voo:* {origem} ➡️ {alternativo} (Desça em {destino})\n📅 *Data:* {data_str}\n🔄 _{texto_flex}_\n🎯 *Alvo:* R$ {preco_alvo_float:.2f} / *Margem:* R$ {teto_maximo:.2f}\n💵 *Preço:* R$ {preco_alt:.2f}\n\n🔗 *[🛒 COMPRAR NO SKYSCANNER]({link})*"
+                                print(f"      🎯 BINGO (ALT-SKIP)! Rota via {alternativo} por R$ {preco_alt}!")
                             elif skip_alternativa == "nao" or not contem_destino:
-                                mensagem_campea = f"🏆🚌 *MELHOR OFERTA - ALTERNATIVA REGULAR!*\n\n✈️ *Voo:* {origem} ➡️ {alternativo} (Termine via terra até {destino})\n📅 *Data:* {data_str}\n💵 *Preço:* R$ {preco_alt:.2f}\n🔄 _{texto_flex}_\n\n🔗 *[🛒 COMPRAR NO SKYSCANNER]({link})*"
+                                mensagem_campea = f"🏆🚌 *MELHOR OFERTA - ALTERNATIVA REGULAR!*\n\n✈️ *Voo:* {origem} ➡️ {alternativo} (Termine via terra até {destino})\n📅 *Data:* {data_str}\n🔄 _{texto_flex}_\n🎯 *Alvo:* R$ {preco_alvo_float:.2f} / *Margem:* R$ {teto_maximo:.2f}\n💵 *Preço:* R$ {preco_alt:.2f}\n\n🔗 *[🛒 COMPRAR NO SKYSCANNER]({link})*"
+                                print(f"      🎯 BINGO (ALT)! Rota até {alternativo} por R$ {preco_alt}!")
                         break
 
             time.sleep(1.5) 
 
         if mensagem_campea:
+            print(f"\n   🚨 Disparando os alertas de pechincha para o Radar #{radar_id}...")
             enviar_alerta_telegram(chat_id, mensagem_campea)
             if alerta_madrugada == "ligacao" and telefone:
                 disparar_ligacao_twilio(telefone)
+        else:
+            print(f"\n   😴 Radar #{radar_id} concluído. Nenhuma oferta atingiu o orçamento estipulado.")
 
     cursor.close()
     conn.close()
+    print(f"\n🛑 Fim do ciclo. Tokens API consumidos: {tokens_gastos_no_ciclo}")
     return tokens_gastos_no_ciclo
 
 if __name__ == "__main__":
@@ -168,4 +198,6 @@ if __name__ == "__main__":
             
         tempo_espera = (86400 * reqs_do_ciclo) / TOKENS_POR_DIA
         if tempo_espera < 900: tempo_espera = 900
+        
+        print(f"⏳ A aguardar {int(tempo_espera/60)} minutos até ao próximo ciclo de rastreamento...")
         time.sleep(tempo_espera)

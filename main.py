@@ -74,5 +74,12 @@ def salvar_radar():
 
 if __name__ == "__main__":
     inicializar_banco()
+    
+    # Inicia o Bot do Telegram
     subprocess.Popen(["python", "bot.py"])
+    
+    # Inicia o Scraper (Rastreador)
+    subprocess.Popen(["python", "scraper.py"])
+    
+    # Inicia o Servidor Web Flask
     app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
