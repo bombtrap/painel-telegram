@@ -215,6 +215,7 @@
             if (iataO.length < 3 || iataD.length < 3) { alert("Selecione os aeroportos válidos!"); return; }
 
             const payload = {
+				id: radarEditandoId,
                 chat_id: tg.initDataUnsafe?.user?.id || "teste",
                 origem: iataO,
                 destino: iataD,
@@ -246,6 +247,78 @@
             })
             .catch(error => { alert("❌ Falha de conexão!"); btn.innerText = "Salvar Configurações do Radar"; btn.disabled = false; });
         });
+		
+		// ----------------------------------------------------------------
+        // 🚀 NOVO: Lógica de Carregamento para Edição de Radar
+        // ----------------------------------------------------------------
+        
+        // 1. Captura os parâmetros da URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const editId = urlParams.get('edit_id');
+        let radarEditandoId = null; // Variável global para guardar o ID
+
+        // 2. Função auxiliar para achar o nome completo do aeroporto no banco
+        function getNomeAeroporto(iata) {
+            if (!iata) return "";
+            const aero = BANCO_AEROPORTOS.find(a => a.iata === iata.toUpperCase());
+            return aero ? aero.nome : iata;
+        }
+
+        // 3. Se existir um edit_id, vamos buscar os dados na API
+        if (editId) {
+            radarEditandoId = parseInt(editId);
+            
+            // Muda a parte visual para o modo Edição
+            document.getElementById("btnSalvar").innerText = "Atualizar Radar #" + radarEditandoId;
+            document.title = "Editar Radar";
+            
+            // Faz a requisição para a nova rota do main.py
+            fetch(`/api/radar/${radarEditandoId}`)
+                .then(res => {
+                    if (!res.ok) throw new Error('Radar não encontrado');
+                    return res.json();
+                })
+                .then(radar => {
+                    // Preenche os Inputs Visuais
+                    document.getElementById('origemInput').value = getNomeAeroporto(radar.origem);
+                    document.getElementById('destinoInput').value = getNomeAeroporto(radar.destino);
+                    document.getElementById('alternativoInput').value = getNomeAeroporto(radar.alternativo);
+                    
+                    // Alimenta a nossa variável oculta 'codigos' que o form precisa para salvar
+                    codigos.origem = radar.origem;
+                    codigos.destino = radar.destino;
+                    codigos.alternativo = radar.alternativo || "";
+                    
+                    // Preenche Checkboxes e aciona a exibição das divs dependentes
+                    document.getElementById('skip_principal').checked = radar.skip_principal === "sim";
+                    if (radar.skip_principal === "sim") {
+                        document.getElementById('div_paradas').style.display = 'flex';
+                        document.getElementById('paradas_principal').value = radar.paradas_principal;
+                    }
+
+                    document.getElementById('data_partida').value = radar.data_partida;
+                    
+                    document.getElementById('datas_flexiveis').checked = radar.datas_flexiveis;
+                    if (radar.datas_flexiveis) {
+                        document.getElementById('div_flex').style.display = 'flex';
+                        document.getElementById('dias_antes').value = radar.dias_antes;
+                        document.getElementById('dias_depois').value = radar.dias_depois;
+                    }
+
+                    document.getElementById('preco_alvo').value = radar.preco_alvo;
+                    document.getElementById('margem').value = radar.margem;
+                    
+                    document.getElementById('alerta_madrugada').value = radar.alerta_madrugada;
+                    if (radar.alerta_madrugada === "ligacao") {
+                        document.getElementById('div_telefone').style.display = 'block';
+                        document.getElementById('telefone').value = radar.telefone || "";
+                    }
+                })
+                .catch(error => {
+                    alert("Erro ao carregar os dados do radar. Tente novamente.");
+                    console.error(error);
+                });
+        }
     </script>
 </body>
 </html>
