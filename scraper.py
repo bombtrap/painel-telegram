@@ -4,10 +4,6 @@ import psycopg2
 import requests
 from datetime import datetime, timedelta
 from twilio.rest import Client
-from dotenv import load_dotenv
-
-# Carrega o arquivo .env (Cofre Local)
-load_dotenv()
 
 RAPIDAPI_KEY = os.getenv("RAPIDAPI_KEY")
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
