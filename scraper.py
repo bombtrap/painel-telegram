@@ -62,7 +62,8 @@ def executar_varredura():
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
-        cursor.execute("SELECT chat_id, origem, destino, alternativo, max_paradas, skip_principal, paradas_principal, skip_alternativa, data_partida, datas_flexiveis, dias_antes, dias_depois, preco_alvo, margem, alerta_madrugada, telefone, id FROM radares")
+        # 🚀 NOVO: Adicionado 'ultimo_preco_encontrado' na busca do banco
+        cursor.execute("SELECT chat_id, origem, destino, alternativo, max_paradas, skip_principal, paradas_principal, skip_alternativa, data_partida, datas_flexiveis, dias_antes, dias_depois, preco_alvo, margem, alerta_madrugada, telefone, id, ultimo_preco_encontrado FROM radares")
         radares = cursor.fetchall()
     except Exception as e:
         print(f"❌ Erro de ligação ao Neon: {e}")
@@ -74,7 +75,8 @@ def executar_varredura():
     print(f"🚀 [{datetime.now().strftime('%H:%M:%S')}] A iniciar varredura em {len(radares)} radar(es) ativo(s)...")
     print(f"========================================================")
     
-    for chat_id, origem, destino, alternativo, max_paradas, skip_principal, paradas_principal, skip_alternativa, data_partida, datas_flexiveis, dias_antes, dias_depois, preco_alvo, margem, alerta_madrugada, telefone, radar_id in radares:
+    # 🚀 NOVO: 'ultimo_preco' adicionado ao desempacotamento
+    for chat_id, origem, destino, alternativo, max_paradas, skip_principal, paradas_principal, skip_alternativa, data_partida, datas_flexiveis, dias_antes, dias_depois, preco_alvo, margem, alerta_madrugada, telefone, radar_id, ultimo_preco in radares:
         teto_maximo = float(preco_alvo) * (1 + (float(margem) / 100))
         preco_alvo_float = float(preco_alvo)
         data_base_obj = datetime.strptime(data_partida, "%Y-%m-%d")
@@ -167,11 +169,23 @@ def executar_varredura():
 
             time.sleep(1.5) 
 
+        # 🚀 NOVO: Lógica de Memória para evitar SPAM de madrugada
         if mensagem_campea:
-            print(f"\n   🚨 Disparando os alertas de pechincha para o Radar #{radar_id}...")
-            enviar_alerta_telegram(chat_id, mensagem_campea)
-            if alerta_madrugada == "ligacao" and telefone:
-                disparar_ligacao_twilio(telefone)
+            if ultimo_preco is not None and melhor_preco_absoluto >= float(ultimo_preco):
+                print(f"\n   🤫 Radar #{radar_id}: O preço (R$ {melhor_preco_absoluto:.2f}) não caiu desde o último alerta (R$ {float(ultimo_preco):.2f}). Ignorando spam.")
+            else:
+                print(f"\n   🚨 Disparando os alertas de pechincha para o Radar #{radar_id}...")
+                enviar_alerta_telegram(chat_id, mensagem_campea)
+                if alerta_madrugada == "ligacao" and telefone:
+                    disparar_ligacao_twilio(telefone)
+                
+                # Grava o novo preço mais baixo na memória do banco de dados
+                try:
+                    cursor.execute("UPDATE radares SET ultimo_preco_encontrado = %s WHERE id = %s", (melhor_preco_absoluto, radar_id))
+                    conn.commit()
+                    print(f"   🧠 Memória atualizada: Novo piso de preço gravado com sucesso (R$ {melhor_preco_absoluto:.2f}).")
+                except Exception as e:
+                    print(f"   ❌ Erro ao gravar memória no banco: {e}")
         else:
             print(f"\n   😴 Radar #{radar_id} concluído. Nenhuma oferta atingiu o orçamento estipulado.")
 
