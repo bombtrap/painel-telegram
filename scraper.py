@@ -62,7 +62,6 @@ def executar_varredura():
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
-        # 🚀 NOVO: Adicionado 'ultimo_preco_encontrado' na busca do banco
         cursor.execute("SELECT chat_id, origem, destino, alternativo, max_paradas, skip_principal, paradas_principal, skip_alternativa, data_partida, datas_flexiveis, dias_antes, dias_depois, preco_alvo, margem, alerta_madrugada, telefone, id, ultimo_preco_encontrado FROM radares")
         radares = cursor.fetchall()
     except Exception as e:
@@ -75,14 +74,13 @@ def executar_varredura():
     print(f"🚀 [{datetime.now().strftime('%H:%M:%S')}] A iniciar varredura em {len(radares)} radar(es) ativo(s)...")
     print(f"========================================================")
     
-    # 🚀 NOVO: 'ultimo_preco' adicionado ao desempacotamento
     for chat_id, origem, destino, alternativo, max_paradas, skip_principal, paradas_principal, skip_alternativa, data_partida, datas_flexiveis, dias_antes, dias_depois, preco_alvo, margem, alerta_madrugada, telefone, radar_id, ultimo_preco in radares:
         teto_maximo = float(preco_alvo) * (1 + (float(margem) / 100))
         preco_alvo_float = float(preco_alvo)
         data_base_obj = datetime.strptime(data_partida, "%Y-%m-%d")
         datas_para_pesquisar = []
         
-        print(f"\n📡 [RADAR #{radar_id}] Rota: {origem} ➡️️ {destino} | Alvo Tolerância: R$ {teto_maximo:.2f}")
+        print(f"\n📡 [RADAR #{radar_id}] Rota: {origem} ➡️ {destino} | Alvo Tolerância: R$ {teto_maximo:.2f}")
 
         if datas_flexiveis:
             print(f"   🔄 Flexibilidade Ativa: Analisando do dia -{dias_antes} até +{dias_depois}")
@@ -103,6 +101,111 @@ def executar_varredura():
 
             # Principal
             tokens_gastos_no_ciclo += 1
-            print("      ✈️️ Procurando voos regulares na malha aérea...")
+            print("      ✈️ Procurando voos regulares na malha aérea...")
             voos_principais = consultar_skyscanner(origem, destino, data_str)
-            if vo
+            if voos_principais:
+                voos_principais.sort(key=lambda x: limpar_preco(x.get("price_raw")) or 999999)
+                menor_preco = limpar_preco(voos_principais[0].get("price_raw"))
+                print(f"      ✅ {len(voos_principais)} voos encontrados. Melhor preço base: R$ {menor_preco}")
+                
+                for voo in voos_principais:
+                    preco_reg = limpar_preco(voo.get("price_raw"))
+                    if not preco_reg or (paradas_principal == 0 and "direct" not in voo.get("tags", [])): continue
+                    if preco_reg <= teto_maximo and preco_reg < melhor_preco_absoluto:
+                        melhor_preco_absoluto = preco_reg
+                        dest_url = "gru" if destino == "SAO" else destino.lower()
+                        link = f"https://www.skyscanner.com.br/transporte/voos/{origem.lower()}/{dest_url}/{data_url}/?adults=1&cabinclass=economy&locale=pt-BR&market=BR&currency=BRL"
+                        mensagem_campea = f"🏆 <b>MELHOR OFERTA ENCONTRADA (Voo Regular)!</b>\n\n✈️ <b>Rota:</b> {origem} ➡️ {destino}\n📅 <b>Data:</b> {data_str}\n🔄 <i>{texto_flex}</i>\n🎯 <b>Alvo:</b> R$ {preco_alvo_float:.2f} / <b>Margem:</b> R$ {teto_maximo:.2f}\n💵 <b>Preço Real:</b> R$ {preco_reg:.2f}\n\n👉 <a href='{link}'>🛒 COMPRAR NO SKYSCANNER</a>"
+                        print(f"      🎯 BINGO! Oferta atingiu o alvo: R$ {preco_reg}!")
+                    break 
+            else:
+                print("      ❌ Nenhum voo regular disponível para esta data.")
+
+            # Skiplagging Principal
+            if skip_principal == "sim" and paradas_principal >= 1:
+                print("      🕵️ Explorando rotas ocultas (Skiplagging)...")
+                destinos_teste = [iscal for iscal in ISCAS_AUTOMATICAS if iscal != destino and iscal != origem]
+                for isca in destinos_teste:
+                    tokens_gastos_no_ciclo += 1
+                    voos_isca = consultar_skyscanner(origem, isca, data_str)
+                    if not voos_isca: continue
+                    voos_isca.sort(key=lambda x: limpar_preco(x.get("price_raw")) or 999999)
+                    for voo_i in voos_isca:
+                        preco_i = limpar_preco(voo_i.get("price_raw"))
+                        if not preco_i or preco_i > teto_maximo: continue
+                        if destino in str(voo_i.get("legs", "")).upper() or (destino == "SAO" and any(ap in str(voo_i.get("legs", "")).upper() for ap in ["GRU", "CGH", "VCP"])):
+                            if preco_i < melhor_preco_absoluto:
+                                melhor_preco_absoluto = preco_i
+                                link = f"https://www.skyscanner.com.br/transporte/voos/{origem.lower()}/{isca.lower()}/{data_url}/?adults=1&cabinclass=economy&locale=pt-BR&market=BR&currency=BRL"
+                                mensagem_campea = f"🏆🔥 <b>MELHOR OFERTA - PASSAGEM OCULTA (SKIPLAGGING)!</b>\n\n✈️ <b>Voo:</b> {origem} ➡️ {isca} (Abandone em {destino})\n📅 <b>Data:</b> {data_str}\n🔄 <i>{texto_flex}</i>\n🎯 <b>Alvo:</b> R$ {preco_alvo_float:.2f} / <b>Margem:</b> R$ {teto_maximo:.2f}\n💵 <b>Preço Real:</b> R$ {preco_i:.2f}\n\n👉 <a href='{link}'>🛒 COMPRAR NO SKYSCANNER</a>\n⚠️ Leve apenas bagagem de mão!"
+                                print(f"      🎯 BINGO (SKIP)! Voo até {isca} abandonando em {destino} por R$ {preco_i}!")
+                            break 
+                    if melhor_preco_absoluto <= preco_i: break 
+
+            # Alternativo
+            if alternativo:
+                print(f"      🚌 Avaliando rota alternativa via {alternativo}...")
+                tokens_gastos_no_ciclo += 1
+                voos_alternativos = consultar_skyscanner(origem, alternativo, data_str)
+                if voos_alternativos:
+                    voos_alternativos.sort(key=lambda x: limpar_preco(x.get("price_raw")) or 999999)
+                    for voo_alt in voos_alternativos:
+                        preco_alt = limpar_preco(voo_alt.get("price_raw"))
+                        if not preco_alt or preco_alt > teto_maximo: continue
+                        if max_paradas == 0 and "direct" not in voo_alt.get("tags", []): continue
+                        contem_destino = destino in str(voo_alt.get("legs", "")).upper() or (destino == "SAO" and any(ap in str(voo_alt.get("legs", "")).upper() for ap in ["GRU", "CGH", "VCP"]))
+                        if preco_alt < melhor_preco_absoluto:
+                            melhor_preco_absoluto = preco_alt
+                            link = f"https://www.skyscanner.com.br/transporte/voos/{origem.lower()}/{alternativo.lower()}/{data_url}/?adults=1&cabinclass=economy&locale=pt-BR&market=BR&currency=BRL"
+                            if skip_alternativa == "sim" and contem_destino and max_paradas >= 1:
+                                mensagem_campea = f"🏆🔥 <b>MELHOR OFERTA - SKIP NA ALTERNATIVA!</b>\n\n✈️ <b>Voo:</b> {origem} ➡️ {alternativo} (Desça em {destino})\n📅 <b>Data:</b> {data_str}\n🔄 <i>{texto_flex}</i>\n🎯 <b>Alvo:</b> R$ {preco_alvo_float:.2f} / <b>Margem:</b> R$ {teto_maximo:.2f}\n💵 <b>Preço:</b> R$ {preco_alt:.2f}\n\n👉 <a href='{link}'>🛒 COMPRAR NO SKYSCANNER</a>"
+                                print(f"      🎯 BINGO (ALT-SKIP)! Rota via {alternativo} por R$ {preco_alt}!")
+                            elif skip_alternativa == "nao" or not contem_destino:
+                                mensagem_campea = f"🏆🚌 <b>MELHOR OFERTA - ALTERNATIVA REGULAR!</b>\n\n✈️ <b>Voo:</b> {origem} ➡️ {alternativo} (Termine via terra até {destino})\n📅 <b>Data:</b> {data_str}\n🔄 <i>{texto_flex}</i>\n🎯 <b>Alvo:</b> R$ {preco_alvo_float:.2f} / <b>Margem:</b> R$ {teto_maximo:.2f}\n💵 <b>Preço:</b> R$ {preco_alt:.2f}\n\n👉 <a href='{link}'>🛒 COMPRAR NO SKYSCANNER</a>"
+                                print(f"      🎯 BINGO (ALT)! Rota até {alternativo} por R$ {preco_alt}!")
+                        break
+
+            time.sleep(1.5) 
+
+        # 🚀 NOVO: Lógica de Memória para evitar SPAM de madrugada
+        if mensagem_campea:
+            if ultimo_preco is not None and melhor_preco_absoluto >= float(ultimo_preco):
+                print(f"\n   🤫 Radar #{radar_id}: O preço (R$ {melhor_preco_absoluto:.2f}) não caiu desde o último alerta (R$ {float(ultimo_preco):.2f}). Ignorando spam.")
+            else:
+                print(f"\n   🚨 Disparando os alertas de pechincha para o Radar #{radar_id}...")
+                enviar_alerta_telegram(chat_id, mensagem_campea)
+                if alerta_madrugada == "ligacao" and telefone:
+                    disparar_ligacao_twilio(telefone)
+                
+                # Grava o novo preço mais baixo na memória do banco de dados
+                try:
+                    cursor.execute("UPDATE radares SET ultimo_preco_encontrado = %s WHERE id = %s", (melhor_preco_absoluto, radar_id))
+                    conn.commit()
+                    print(f"   🧠 Memória atualizada: Novo piso de preço gravado com sucesso (R$ {melhor_preco_absoluto:.2f}).")
+                except Exception as e:
+                    print(f"   ❌ Erro ao gravar memória no banco: {e}")
+        else:
+            print(f"\n   😴 Radar #{radar_id} concluído. Nenhuma oferta atingiu o orçamento estipulado.")
+
+    cursor.close()
+    conn.close()
+    print(f"\n🛑 Fim do ciclo. Tokens API consumidos: {tokens_gastos_no_ciclo}")
+    return tokens_gastos_no_ciclo
+
+if __name__ == "__main__":
+    TOKENS_MENSAIS = 100
+    DIAS_MES = 30
+    MARGEM_SEGURANCA = 0.95 
+    TOKENS_POR_DIA = (TOKENS_MENSAIS / DIAS_MES) * MARGEM_SEGURANCA
+    
+    while True:
+        reqs_do_ciclo = executar_varredura()
+        if reqs_do_ciclo == 0:
+            time.sleep(3600)
+            continue
+            
+        tempo_espera = (86400 * reqs_do_ciclo) / TOKENS_POR_DIA
+        if tempo_espera < 900: tempo_espera = 900
+        
+        print(f"⏳ A aguardar {int(tempo_espera/60)} minutos até ao próximo ciclo de rastreamento...")
+        time.sleep(tempo_espera)

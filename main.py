@@ -14,6 +14,7 @@ def inicializar_banco():
         conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()
         
+        # 1. Cria a tabela inteira caso o banco esteja vazio (instalação do zero)
         cursor.execute("""
             CREATE TABLE IF NOT EXISTS radares (
                 id SERIAL PRIMARY KEY,
@@ -36,6 +37,15 @@ def inicializar_banco():
             )
         """)
         conn.commit()
+
+        # 2. 🚀 LÓGICA DE ATUALIZAÇÃO: Verifica se a coluna de memória já existe
+        cursor.execute("SELECT column_name FROM information_schema.columns WHERE table_name='radares' AND column_name='ultimo_preco_encontrado'")
+        if not cursor.fetchone():
+            # Se não existir, ele injeta a coluna nova na tabela antiga sem apagar seus dados
+            cursor.execute("ALTER TABLE radares ADD COLUMN ultimo_preco_encontrado NUMERIC")
+            conn.commit()
+            print("🧠 Coluna de memória (ultimo_preco_encontrado) adicionada com sucesso!")
+
         cursor.close()
         conn.close()
         print("✅ Base de dados verificada e blindada (Persistência Ativa)!")
