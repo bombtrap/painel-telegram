@@ -4,6 +4,9 @@ import psycopg2
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
+# 🔒 Trava de Segurança (Whitelist)
+MEU_ID_PERMITIDO = "1377560958"
+
 app = Flask(__name__, static_folder='.')
 CORS(app)
 
@@ -88,6 +91,12 @@ def get_radar(id):
 @app.route('/api/salvar', methods=['POST'])
 def salvar_radar():
     dados = request.json
+    
+    # 🛡️ BARREIRA DE ACESSO AQUI: Bloqueia quem não for você antes de chegar no banco
+    if str(dados.get('chat_id')) != MEU_ID_PERMITIDO:
+        print(f"⚠️️ Tentativa de acesso bloqueada! ID: {dados.get('chat_id')}")
+        return jsonify({"erro": "Acesso negado. Bot privado / Sem créditos disponíveis."}), 403
+
     try:
         conn = psycopg2.connect(DATABASE_URL)
         cursor = conn.cursor()

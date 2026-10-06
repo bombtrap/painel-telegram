@@ -10,6 +10,12 @@ TUNNEL_URL = "https://rastreador-passagens.onrender.com"
 
 bot = telebot.TeleBot(TELEGRAM_TOKEN)
 
+
+#trava de entrada
+if str(message.chat.id) != "1377560958":
+    bot.send_message(message.chat.id, "Bot privado. Sem créditos.")
+    return
+
 def enviar_boas_vindas(message):
     nome = message.from_user.first_name
     texto = (
